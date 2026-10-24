@@ -277,53 +277,8 @@ class RpaStudioApp {
             this.markDirty(true);
         };
 
-        // Pre-recording Live Setup Preview
-        const btnToggleRecPreview = document.getElementById('btnToggleRecSetupPreview');
-        const recPreviewVid = document.getElementById('recSetupPreviewVideo');
-        const recPlaceholder = document.getElementById('recSetupPlaceholder');
-        let recSetupStream = null;
-
-        const stopRecSetupPreview = () => {
-            if (recSetupStream) {
-                recSetupStream.getTracks().forEach(t => t.stop());
-                recSetupStream = null;
-            }
-            if (recPreviewVid) {
-                recPreviewVid.srcObject = null;
-                recPreviewVid.style.display = 'none';
-            }
-            if (recPlaceholder) recPlaceholder.style.display = 'block';
-            if (btnToggleRecPreview) btnToggleRecPreview.innerHTML = '<span>📹</span> Test Camera Feed';
-        };
-        this.stopRecSetupPreview = stopRecSetupPreview;
-
-        if (btnToggleRecPreview) {
-            btnToggleRecPreview.onclick = async () => {
-                if (recSetupStream) {
-                    stopRecSetupPreview();
-                    return;
-                }
-                try {
-                    const camSelect = document.getElementById('cameraDeviceSelect');
-                    const constraints = {
-                        video: camSelect && camSelect.value && camSelect.value !== 'default'
-                            ? { deviceId: { exact: camSelect.value } }
-                            : true,
-                        audio: false
-                    };
-                    recSetupStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    if (recPreviewVid) {
-                        recPreviewVid.srcObject = recSetupStream;
-                        recPreviewVid.style.display = 'block';
-                    }
-                    if (recPlaceholder) recPlaceholder.style.display = 'none';
-                    btnToggleRecPreview.innerHTML = '<span>⏹</span> Stop Camera Feed';
-                } catch (err) {
-                    console.error('[Pre-recording Preview Error]', err);
-                    alert(`Camera preview unavailable: ${err.message}`);
-                }
-            };
-        }
+        // Pre-recording Live Setup Preview Engine
+        this.setupRecordingPreview();
 
         // Video Output Destination Folder Picker
         const btnBrowseOutput = document.getElementById('btnBrowseOutputFolder');
@@ -2248,6 +2203,7 @@ class RpaStudioApp {
             } else {
                 await this.populateRecordingDevices();
                 document.getElementById('recordModal').classList.remove('hidden');
+                this.renderRecordingSetupPreview();
             }
         };
 
@@ -2256,10 +2212,12 @@ class RpaStudioApp {
             recCamToggle.onchange = (e) => {
                 const groupCam = document.getElementById('groupRecCameraSelect');
                 if (groupCam) groupCam.style.display = e.target.checked ? 'block' : 'none';
+                this.renderRecordingSetupPreview();
             };
         }
 
         document.getElementById('btnStartCapture').onclick = () => {
+            this.stopRecSetupPreview();
             document.getElementById('recordModal').classList.add('hidden');
             this.startRecording();
         };
@@ -2621,7 +2579,7 @@ class RpaStudioApp {
                 style: 'bounce',
                 type: 'ltr',
                 movement: 'bounce',
-                direction: 'right',
+                direction: 'bottom',
                 bounce: 40,
                 offset: 0.00,
                 duration: 0.8
@@ -2649,18 +2607,23 @@ class RpaStudioApp {
 
         if (preset === 'jump') {
             base.name = 'Jump And Fall';
-            base.in = { style: 'bounce', type: 'ltr', movement: 'bounce', direction: 'right', bounce: 40, offset: 0.00, duration: 0.8 };
+            base.in = { style: 'jump', type: 'ltr', movement: 'bounce', direction: 'bottom', bounce: 40, offset: 0.00, duration: 0.8 };
             base.during = { style: 'jump', type: 'ltr', jump: 60.00, loopTime: 1.00, offset: 0.08, delay: 1.67, loops: 1, loopForever: true };
             base.out = { style: 'drop', type: 'ltr', movement: 'ease-in-quart', direction: 'bottom', speed: 92, offset: 0.08, duration: 0.8 };
-        } else if (preset === 'slide') {
+        } else if (preset === 'slide' || preset === 'slide-drift' || preset === 'slide-in') {
             base.name = 'Slide & Drift';
             base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'left', bounce: 50, offset: 0.05, duration: 0.8 };
             base.during = { style: 'drift', type: 'ltr', jump: 25.00, loopTime: 2.00, offset: 0.08, delay: 0.50, loops: 1, loopForever: true };
             base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'right', speed: 85, offset: 0.05, duration: 0.8 };
+        } else if (preset === 'slide-bounce') {
+            base.name = 'Slide & Bounce';
+            base.in = { style: 'slide-bounce', type: 'ltr', movement: 'bounce', direction: 'left', bounce: 70, offset: 0.05, duration: 0.9 };
+            base.during = { style: 'jump', type: 'ltr', jump: 35.00, loopTime: 1.20, offset: 0.06, delay: 0.50, loops: 1, loopForever: true };
+            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.05, duration: 0.8 };
         } else if (preset === 'pop' || preset === 'popup') {
             base.name = 'Pop Up';
             base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 60, offset: 0.04, duration: 0.7 };
-            base.during = { style: 'dancing-wave', type: 'ltr', jump: 30.00, loopTime: 1.20, offset: 0.06, delay: 1.00, loops: 1, loopForever: true };
+            base.during = { style: 'pulsating', type: 'ltr', jump: 30.00, loopTime: 1.20, offset: 0.06, delay: 1.00, loops: 1, loopForever: true };
             base.out = { style: 'shrink', type: 'ltr', movement: 'ease-in-quart', direction: 'bottom', speed: 85, offset: 0.04, duration: 0.7 };
         } else if (preset === 'pulsing' || preset === 'pulsate') {
             base.name = 'Pulsing';
@@ -2675,7 +2638,7 @@ class RpaStudioApp {
         } else if (preset === 'wiggle') {
             base.name = 'Wiggle / Jitter';
             base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 70, offset: 0.03, duration: 0.6 };
-            base.during = { style: 'wobble', type: 'ltr', jump: 35.00, loopTime: 0.60, offset: 0.04, delay: 0.10, loops: 1, loopForever: true };
+            base.during = { style: 'wiggle', type: 'ltr', jump: 35.00, loopTime: 0.60, offset: 0.04, delay: 0.10, loops: 1, loopForever: true };
             base.out = { style: 'shrink', type: 'ltr', movement: 'bounce', direction: 'bottom', speed: 80, offset: 0.04, duration: 0.6 };
         } else if (preset === 'swing') {
             base.name = 'Pendulum Swing';
@@ -2685,8 +2648,43 @@ class RpaStudioApp {
         } else if (preset === 'float-bob') {
             base.name = 'Float & Bob';
             base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', bounce: 30, offset: 0.05, duration: 0.9 };
-            base.during = { style: 'drift', type: 'ltr', jump: 28.00, loopTime: 1.80, offset: 0.06, delay: 0.20, loops: 1, loopForever: true };
+            base.during = { style: 'float-bob', type: 'ltr', jump: 28.00, loopTime: 1.80, offset: 0.06, delay: 0.20, loops: 1, loopForever: true };
             base.out = { style: 'fade', type: 'ltr', movement: 'smooth', direction: 'top', speed: 80, offset: 0.05, duration: 0.8 };
+        } else if (preset === 'shifting') {
+            base.name = 'Shifting Drift';
+            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'top', bounce: 35, offset: 0.05, duration: 0.8 };
+            base.during = { style: 'drift', type: 'ltr', jump: 35.00, loopTime: 1.60, offset: 0.08, delay: 0.30, loops: 1, loopForever: true };
+            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 80, offset: 0.05, duration: 0.8 };
+        } else if (preset === 'hinge') {
+            base.name = 'Hinge Corner Drop';
+            base.in = { style: 'drop', type: 'ltr', movement: 'spring', direction: 'top', bounce: 50, offset: 0.05, duration: 0.8 };
+            base.during = { style: 'swing', type: 'ltr', jump: 40.00, loopTime: 1.50, offset: 0.08, delay: 0.20, loops: 1, loopForever: true };
+            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 90, offset: 0.05, duration: 0.8 };
+        } else if (preset === 'roller') {
+            base.name = 'Roller 360';
+            base.in = { style: 'roller', type: 'ltr', movement: 'smooth', direction: 'left', bounce: 45, offset: 0.05, duration: 0.9 };
+            base.during = { style: 'drift', type: 'ltr', jump: 20.00, loopTime: 1.80, offset: 0.06, delay: 0.40, loops: 1, loopForever: true };
+            base.out = { style: 'roller', type: 'ltr', movement: 'smooth', direction: 'right', speed: 85, offset: 0.05, duration: 0.9 };
+        } else if (preset === 'spin-grow') {
+            base.name = '720° Spin Grow';
+            base.in = { style: 'spin-grow', type: 'ltr', movement: 'smooth', direction: 'center', bounce: 50, offset: 0.04, duration: 0.8 };
+            base.during = { style: 'breathe', type: 'ltr', jump: 20.00, loopTime: 2.00, offset: 0.06, delay: 0.30, loops: 1, loopForever: true };
+            base.out = { style: 'spin-grow', type: 'ltr', movement: 'smooth', direction: 'center', speed: 80, offset: 0.04, duration: 0.8 };
+        } else if (preset === 'squash-stretch') {
+            base.name = 'Squash & Stretch';
+            base.in = { style: 'bounce', type: 'ltr', movement: 'bounce', direction: 'top', bounce: 65, offset: 0.05, duration: 0.8 };
+            base.during = { style: 'jump', type: 'ltr', jump: 45.00, loopTime: 0.90, offset: 0.08, delay: 0.20, loops: 1, loopForever: true };
+            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.05, duration: 0.7 };
+        } else if (preset === 'glow-pulse') {
+            base.name = 'Glow Breathe';
+            base.in = { style: 'fade', type: 'all', movement: 'smooth', direction: 'bottom', bounce: 30, offset: 0.00, duration: 0.7 };
+            base.during = { style: 'breathe', type: 'all', jump: 30.00, loopTime: 1.40, offset: 0.00, delay: 0.10, loops: 1, loopForever: true };
+            base.out = { style: 'fade', type: 'all', movement: 'smooth', direction: 'bottom', speed: 80, offset: 0.00, duration: 0.7 };
+        } else if (preset === 'glitch-jitter') {
+            base.name = 'Glitch Jitter';
+            base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 60, offset: 0.03, duration: 0.6 };
+            base.during = { style: 'glitch', type: 'ltr', jump: 35.00, loopTime: 0.50, offset: 0.04, delay: 0.10, loops: 1, loopForever: true };
+            base.out = { style: 'shrink', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.03, duration: 0.6 };
         } else {
             base.name = behaviorName.charAt(0).toUpperCase() + behaviorName.slice(1);
         }
@@ -2916,6 +2914,455 @@ class RpaStudioApp {
         this.compositor.renderFrame(this.timeline, this.playheadTime);
     }
 
+    setupRecordingPreview() {
+        const btnToggleRecPreview = document.getElementById('btnToggleRecSetupPreview');
+        const hiddenVid = document.getElementById('recSetupVideoHidden');
+        const previewCanvas = document.getElementById('recSetupPreviewCanvas');
+        this.recSetupStream = null;
+        this.recPreviewAnimId = null;
+        this.recWebcamCustomPos = null;
+        this.recCurrentOverlayBounds = null;
+
+        const stopRecSetupPreview = () => {
+            if (this.recPreviewAnimId) {
+                cancelAnimationFrame(this.recPreviewAnimId);
+                this.recPreviewAnimId = null;
+            }
+            if (this.recSetupStream) {
+                this.recSetupStream.getTracks().forEach(t => t.stop());
+                this.recSetupStream = null;
+            }
+            if (hiddenVid) {
+                try { hiddenVid.pause(); } catch (_) {}
+                hiddenVid.srcObject = null;
+            }
+            if (btnToggleRecPreview) {
+                btnToggleRecPreview.innerHTML = '<span>📹</span> Test Camera Feed';
+            }
+            this.renderRecordingSetupPreview();
+        };
+        this.stopRecSetupPreview = stopRecSetupPreview;
+
+        if (btnToggleRecPreview) {
+            btnToggleRecPreview.onclick = async () => {
+                if (this.recSetupStream) {
+                    stopRecSetupPreview();
+                    return;
+                }
+                try {
+                    const camSelect = document.getElementById('recCameraDevice');
+                    const constraints = {
+                        video: camSelect && camSelect.value && camSelect.value !== 'default'
+                            ? { deviceId: { exact: camSelect.value }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                            : { width: { ideal: 1280 }, height: { ideal: 720 } },
+                        audio: false
+                    };
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.recSetupStream = stream;
+                    if (hiddenVid) {
+                        hiddenVid.srcObject = stream;
+                        await hiddenVid.play();
+                    }
+                    const camToggle = document.getElementById('recCameraToggle');
+                    if (camToggle) {
+                        camToggle.checked = true;
+                        const grp = document.getElementById('groupRecCameraSelect');
+                        if (grp) grp.style.display = 'block';
+                    }
+                    btnToggleRecPreview.innerHTML = '<span>⏹</span> Stop Camera Feed';
+
+                    const animLoop = () => {
+                        if (this.recSetupStream) {
+                            this.renderRecordingSetupPreview();
+                            this.recPreviewAnimId = requestAnimationFrame(animLoop);
+                        }
+                    };
+                    if (this.recPreviewAnimId) cancelAnimationFrame(this.recPreviewAnimId);
+                    this.recPreviewAnimId = requestAnimationFrame(animLoop);
+                } catch (err) {
+                    console.error('[Pre-recording Preview Error]', err);
+                    alert(`Camera preview unavailable: ${err.message}`);
+                }
+            };
+        }
+
+        // Live change listeners on all webcam & recording settings
+        const controlsToWatch = [
+            'selWebcamShape', 'selWebcamPosition', 'rngWebcamSize', 'rngWebcamBorder',
+            'colWebcamBorder', 'chkWebcamShadow', 'chkWebcamMirror', 'recCameraToggle', 'recResolution'
+        ];
+        controlsToWatch.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', () => {
+                    if (id === 'rngWebcamSize') {
+                        const lbl = document.getElementById('lblWebcamSize');
+                        if (lbl) lbl.innerText = el.value + '%';
+                    } else if (id === 'rngWebcamBorder') {
+                        const lbl = document.getElementById('lblWebcamBorder');
+                        if (lbl) lbl.innerText = el.value + 'px';
+                    } else if (id === 'selWebcamPosition') {
+                        this.recWebcamCustomPos = null;
+                    }
+                    this.renderRecordingSetupPreview();
+                });
+                el.addEventListener('change', () => {
+                    if (id === 'selWebcamPosition') {
+                        this.recWebcamCustomPos = null;
+                    }
+                    this.renderRecordingSetupPreview();
+                });
+            }
+        });
+
+        const camDeviceSelect = document.getElementById('recCameraDevice');
+        if (camDeviceSelect) {
+            camDeviceSelect.onchange = async () => {
+                if (this.recSetupStream) {
+                    stopRecSetupPreview();
+                    if (btnToggleRecPreview) btnToggleRecPreview.click();
+                } else {
+                    this.renderRecordingSetupPreview();
+                }
+            };
+        }
+
+        // 1-Click Size & Border Presets
+        document.querySelectorAll('.btn-rec-size-preset').forEach(btn => {
+            btn.onclick = () => {
+                const s = btn.dataset.size;
+                const rng = document.getElementById('rngWebcamSize');
+                const lbl = document.getElementById('lblWebcamSize');
+                if (rng) rng.value = s;
+                if (lbl) lbl.innerText = s + '%';
+                this.renderRecordingSetupPreview();
+            };
+        });
+
+        document.querySelectorAll('.btn-rec-border-preset').forEach(btn => {
+            btn.onclick = () => {
+                const b = btn.dataset.border;
+                const rng = document.getElementById('rngWebcamBorder');
+                const lbl = document.getElementById('lblWebcamBorder');
+                if (rng) rng.value = b;
+                if (lbl) lbl.innerText = b + 'px';
+                this.renderRecordingSetupPreview();
+            };
+        });
+
+        // Interactive Drag-and-Drop & Mousewheel Resizing on the Preview Canvas
+        if (previewCanvas) {
+            let isDragging = false;
+            let dragStartX = 0;
+            let dragStartY = 0;
+
+            const getCanvasCoords = (e) => {
+                const rect = previewCanvas.getBoundingClientRect();
+                const scaleX = previewCanvas.width / rect.width;
+                const scaleY = previewCanvas.height / rect.height;
+                return {
+                    x: (e.clientX - rect.left) * scaleX,
+                    y: (e.clientY - rect.top) * scaleY
+                };
+            };
+
+            previewCanvas.onpointerdown = (e) => {
+                const pt = getCanvasCoords(e);
+                const b = this.recCurrentOverlayBounds;
+                if (b && pt.x >= b.ox && pt.x <= (b.ox + b.ow) && pt.y >= b.oy && pt.y <= (b.oy + b.oh)) {
+                    isDragging = true;
+                    dragStartX = pt.x - b.ox;
+                    dragStartY = pt.y - b.oy;
+                    previewCanvas.setPointerCapture(e.pointerId);
+                    previewCanvas.style.cursor = 'grabbing';
+                }
+            };
+
+            previewCanvas.onpointermove = (e) => {
+                const pt = getCanvasCoords(e);
+                const b = this.recCurrentOverlayBounds;
+                if (isDragging && b) {
+                    const newOx = Math.max(0, Math.min(previewCanvas.width - b.ow, pt.x - dragStartX));
+                    const newOy = Math.max(0, Math.min(previewCanvas.height - b.oh, pt.y - dragStartY));
+                    this.recWebcamCustomPos = {
+                        x: newOx / previewCanvas.width,
+                        y: newOy / previewCanvas.height
+                    };
+                    this.renderRecordingSetupPreview();
+                } else if (b && pt.x >= b.ox && pt.x <= (b.ox + b.ow) && pt.y >= b.oy && pt.y <= (b.oy + b.oh)) {
+                    previewCanvas.style.cursor = 'grab';
+                } else {
+                    previewCanvas.style.cursor = 'default';
+                }
+            };
+
+            const endDrag = (e) => {
+                if (isDragging) {
+                    isDragging = false;
+                    try { previewCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+                    previewCanvas.style.cursor = 'default';
+                }
+            };
+            previewCanvas.onpointerup = endDrag;
+            previewCanvas.onpointercancel = endDrag;
+
+            // Mouse wheel directly resizes webcam scale
+            previewCanvas.onwheel = (e) => {
+                const pt = getCanvasCoords(e);
+                const b = this.recCurrentOverlayBounds;
+                if (b && pt.x >= b.ox && pt.x <= (b.ox + b.ow) && pt.y >= b.oy && pt.y <= (b.oy + b.oh)) {
+                    e.preventDefault();
+                    const rng = document.getElementById('rngWebcamSize');
+                    if (rng) {
+                        const step = e.deltaY < 0 ? 2 : -2;
+                        const nextVal = Math.max(8, Math.min(75, parseInt(rng.value, 10) + step));
+                        rng.value = nextVal;
+                        const lbl = document.getElementById('lblWebcamSize');
+                        if (lbl) lbl.innerText = nextVal + '%';
+                        this.renderRecordingSetupPreview();
+                    }
+                }
+            };
+        }
+
+        // Close handlers to stop camera preview
+        const recordModal = document.getElementById('recordModal');
+        if (recordModal) {
+            const btnClose = recordModal.querySelector('.modal-close');
+            if (btnClose) btnClose.addEventListener('click', () => stopRecSetupPreview());
+        }
+    }
+
+    renderRecordingSetupPreview() {
+        const canvas = document.getElementById('recSetupPreviewCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const cw = canvas.width;
+        const ch = canvas.height;
+
+        // 1. Draw Full Scene Background (What will actually be captured)
+        if (this.compositor && this.compositor.canvas && this.timeline && this.timeline.clips && this.timeline.clips.length > 0) {
+            ctx.drawImage(this.compositor.canvas, 0, 0, cw, ch);
+        } else {
+            // High-fidelity studio desktop workspace pattern
+            const bgGrad = ctx.createLinearGradient(0, 0, cw, ch);
+            bgGrad.addColorStop(0, '#0f172a');
+            bgGrad.addColorStop(1, '#020617');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, cw, ch);
+
+            // Subtle desktop grid
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < cw; x += 32) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, ch);
+                ctx.stroke();
+            }
+            for (let y = 0; y < ch; y += 32) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(cw, y);
+                ctx.stroke();
+            }
+
+            // Window Header Bar Mockup
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.fillRect(0, 0, cw, 22);
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath(); ctx.arc(12, 11, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath(); ctx.arc(24, 11, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath(); ctx.arc(36, 11, 4, 0, Math.PI * 2); ctx.fill();
+
+            const resVal = document.getElementById('recResolution')?.value || '1920x1080';
+            ctx.fillStyle = '#64748b';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Desktop Screen Display (${resVal})`, cw / 2, 15);
+
+            // Studio Center Reticle
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
+            ctx.beginPath();
+            ctx.arc(cw / 2, ch / 2, 40, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+            ctx.font = '12px Inter, sans-serif';
+            ctx.fillText('Recording Display Area', cw / 2, ch / 2 + 55);
+            ctx.restore();
+        }
+
+        // 2. Check PiP Webcam Overlay
+        const isCamEnabled = document.getElementById('recCameraToggle')?.checked || !!this.recSetupStream;
+        if (!isCamEnabled) {
+            this.recCurrentOverlayBounds = null;
+            return;
+        }
+
+        // Read UI Settings
+        const shape = document.getElementById('selWebcamShape')?.value || 'circle';
+        const pos = document.getElementById('selWebcamPosition')?.value || 'bottom-right';
+        const sizeRatio = Math.max(0.08, Math.min(0.75, (parseFloat(document.getElementById('rngWebcamSize')?.value || 22)) / 100));
+        const borderWidth = parseInt(document.getElementById('rngWebcamBorder')?.value || 3, 10);
+        const borderColor = document.getElementById('colWebcamBorder')?.value || '#38bdf8';
+        const hasShadow = document.getElementById('chkWebcamShadow')?.checked ?? true;
+        const isMirror = document.getElementById('chkWebcamMirror')?.checked ?? true;
+
+        // Calculate Overlay Coordinates
+        const overlayW = Math.round(cw * sizeRatio);
+        const overlayH = (shape === 'rect' || shape === 'oval') ? Math.round(overlayW * (9 / 16)) : overlayW;
+        const margin = Math.round(Math.min(cw, ch) * 0.04);
+
+        let ox = cw - overlayW - margin;
+        let oy = ch - overlayH - margin;
+
+        if (this.recWebcamCustomPos) {
+            ox = Math.max(0, Math.min(cw - overlayW, Math.round(this.recWebcamCustomPos.x * cw)));
+            oy = Math.max(0, Math.min(ch - overlayH, Math.round(this.recWebcamCustomPos.y * ch)));
+        } else if (pos === 'bottom-left') {
+            ox = margin;
+            oy = ch - overlayH - margin;
+        } else if (pos === 'top-right') {
+            ox = cw - overlayW - margin;
+            oy = margin;
+        } else if (pos === 'top-left') {
+            ox = margin;
+            oy = margin;
+        }
+
+        this.recCurrentOverlayBounds = { ox, oy, ow: overlayW, oh: overlayH };
+
+        const cx = ox + overlayW / 2;
+        const cy = oy + overlayH / 2;
+        const radius = overlayW / 2;
+
+        const buildShapePath = () => {
+            ctx.beginPath();
+            if (shape === 'circle') {
+                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            } else if (shape === 'square') {
+                const r = Math.round(overlayW * 0.18);
+                ctx.moveTo(ox + r, oy);
+                ctx.lineTo(ox + overlayW - r, oy);
+                ctx.quadraticCurveTo(ox + overlayW, oy, ox + overlayW, oy + r);
+                ctx.lineTo(ox + overlayW, oy + overlayH - r);
+                ctx.quadraticCurveTo(ox + overlayW, oy + overlayH, ox + overlayW - r, oy + overlayH);
+                ctx.lineTo(ox + r, oy + overlayH);
+                ctx.quadraticCurveTo(ox, oy + overlayH, ox, oy + overlayH - r);
+                ctx.lineTo(ox, oy + r);
+                ctx.quadraticCurveTo(ox, oy, ox + r, oy);
+            } else if (shape === 'polygon') {
+                const sides = 6;
+                for (let i = 0; i < sides; i++) {
+                    const angle = (i * 2 * Math.PI / sides) - (Math.PI / 2);
+                    const px = cx + radius * Math.cos(angle);
+                    const py = cy + radius * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+            } else if (shape === 'diamond') {
+                ctx.moveTo(cx, oy);
+                ctx.lineTo(ox + overlayW, cy);
+                ctx.lineTo(cx, oy + overlayH);
+                ctx.lineTo(ox, cy);
+                ctx.closePath();
+            } else if (shape === 'oval') {
+                ctx.ellipse(cx, cy, overlayW / 2, overlayH / 2, 0, 0, Math.PI * 2);
+            } else {
+                ctx.rect(ox, oy, overlayW, overlayH);
+            }
+        };
+
+        // 3. Drop Shadow
+        if (hasShadow) {
+            ctx.save();
+            buildShapePath();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+            ctx.shadowBlur = Math.round(18 * (cw / 640));
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 5;
+            ctx.fillStyle = '#000000';
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 4. Clip & Draw Camera Video Feed or Preview Avatar
+        ctx.save();
+        buildShapePath();
+        ctx.clip();
+
+        if (isMirror) {
+            ctx.translate(cx, cy);
+            ctx.scale(-1, 1);
+            ctx.translate(-cx, -cy);
+        }
+
+        const hiddenVid = document.getElementById('recSetupVideoHidden');
+        if (this.recSetupStream && hiddenVid && hiddenVid.readyState >= 2) {
+            const vw = hiddenVid.videoWidth || 1280;
+            const vh = hiddenVid.videoHeight || 720;
+            const vAspect = vw / vh;
+            const oAspect = overlayW / overlayH;
+            let sw = vw, sh = vh, sx = 0, sy = 0;
+            if (vAspect > oAspect) {
+                sw = vh * oAspect;
+                sx = (vw - sw) / 2;
+            } else {
+                sh = vw / oAspect;
+                sy = (vh - sh) / 2;
+            }
+            ctx.drawImage(hiddenVid, sx, sy, sw, sh, ox, oy, overlayW, overlayH);
+        } else {
+            // Live Preview Avatar with Camera Silhouette
+            const camGrad = ctx.createLinearGradient(ox, oy, ox + overlayW, oy + overlayH);
+            camGrad.addColorStop(0, '#1e293b');
+            camGrad.addColorStop(1, '#090d16');
+            ctx.fillStyle = camGrad;
+            ctx.fillRect(ox, oy, overlayW, overlayH);
+
+            ctx.fillStyle = '#38bdf8';
+            ctx.font = `${Math.round(overlayW * 0.28)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('📷', cx, cy - Math.round(overlayW * 0.07));
+
+            ctx.fillStyle = '#f1f5f9';
+            ctx.font = `bold ${Math.max(9, Math.round(overlayW * 0.09))}px Inter, sans-serif`;
+            ctx.fillText('Webcam PiP', cx, cy + Math.round(overlayW * 0.18));
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = `${Math.max(8, Math.round(overlayW * 0.07))}px Inter, sans-serif`;
+            ctx.fillText(shape.toUpperCase(), cx, cy + Math.round(overlayW * 0.30));
+        }
+        ctx.restore();
+
+        // 5. Border
+        if (borderWidth > 0) {
+            ctx.save();
+            buildShapePath();
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = Math.max(1, Math.round(borderWidth * (cw / 1920)));
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 6. Size indicator badge on overlay
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.beginPath();
+        ctx.roundRect(ox + 4, oy + 4, 34, 15, 3);
+        ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${Math.round(sizeRatio * 100)}%`, ox + 21, oy + 12);
+        ctx.restore();
+    }
+
     async populateRecordingDevices() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
         try {
@@ -2970,6 +3417,7 @@ class RpaStudioApp {
             const webcamBorderColor = document.getElementById('colWebcamBorder')?.value || '#38bdf8';
             const webcamShadow = document.getElementById('chkWebcamShadow')?.checked ?? true;
             const webcamMirror = document.getElementById('chkWebcamMirror')?.checked ?? true;
+            const webcamCustomPos = this.recWebcamCustomPos;
 
             await this.recorder.start({
                 resolution,
@@ -2980,7 +3428,8 @@ class RpaStudioApp {
                 includeCamera,
                 cameraDeviceId,
                 webcamShape,
-                webcamPosition,
+                webcamPosition: webcamCustomPos ? 'custom' : webcamPosition,
+                webcamCustomPos,
                 webcamSize,
                 webcamBorderWidth,
                 webcamBorderColor,

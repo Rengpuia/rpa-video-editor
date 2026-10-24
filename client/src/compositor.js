@@ -444,8 +444,9 @@ class RpaCompositor {
             if (clip.type === 'callout') {
                 const b = this.getCalloutBounds(clip, width, height);
                 const bScale = behaviorTransform.scale !== undefined ? behaviorTransform.scale : 1.0;
-                const sX = (kf.scaleX || kf.scale || 1.0) * bScale;
-                const sY = (kf.scaleY || kf.scale || 1.0) * bScale;
+                const tScale = transitionTransform.scale !== undefined ? transitionTransform.scale : 1.0;
+                const sX = (kf.scaleX || kf.scale || 1.0) * bScale * tScale;
+                const sY = (kf.scaleY || kf.scale || 1.0) * bScale * tScale;
                 drawW = b.bw * sX;
                 drawH = b.bh * sY;
                 drawX = b.bx + (b.bw - drawW) / 2 + (behaviorTransform.x || 0) + (transitionTransform.x || 0) + kf.x;
@@ -473,11 +474,8 @@ class RpaCompositor {
                 this.ctx.translate(-(drawX + drawW / 2), -(drawY + drawH / 2));
             }
 
-            // Apply Transition Geometric Clipping (Wipe / Circle)
-            // For Callouts/Annotations, skip chassis clipping so the box container stays pristine
-            if (clip.type !== 'callout') {
-                this.applyTransitionClipping(clip, relTime, clip.duration, drawX, drawY, drawW, drawH);
-            }
+            // Apply Transition Geometric Clipping (Wipe / Circle / Flash / Flare) across all clips including Annotations/Callouts
+            this.applyTransitionClipping(clip, relTime, clip.duration, drawX, drawY, drawW, drawH);
 
             // Drop shadow with enhanced power, blur and depth
             if (fx.dropShadow) {
@@ -988,14 +986,29 @@ class RpaCompositor {
 
         const projW = (this.projectSettings?.width || this.projectWidth || (this.canvas ? this.canvas.width : 1920));
         const projH = (this.projectSettings?.height || this.projectHeight || (this.canvas ? this.canvas.height : 1080));
-        const edgeDistY = projH + 500;
-        const edgeDistX = projW + 500;
+        const edgeDistY = projH + 800;
+        const edgeDistX = projW + 800;
+
+        const resolveDir = (phaseObj) => {
+            if (!phaseObj) return 'bottom';
+            const dir = (phaseObj.direction || '').toLowerCase();
+            if (['left', 'right', 'top', 'bottom', 'center'].includes(dir)) return dir;
+            const mov = (phaseObj.movement || '').toLowerCase();
+            if (['left', 'right', 'top', 'bottom', 'center'].includes(mov)) return mov;
+            if (dir.includes('left') || mov.includes('left')) return 'left';
+            if (dir.includes('right') || mov.includes('right')) return 'right';
+            if (dir.includes('top') || dir.includes('up') || mov.includes('top') || mov.includes('up')) return 'top';
+            if (dir.includes('bottom') || dir.includes('down') || mov.includes('bottom') || mov.includes('down')) return 'bottom';
+            return 'bottom';
+        };
+
+        const inDir = resolveDir(bp.in);
+        const outDir = resolveDir(bp.out);
 
         // Phase 1: IN (Entrance)
         if (relTime < inDur) {
             const t = Math.max(0, Math.min(1, relTime / Math.max(0.01, inDur)));
-            const inStyle = bp.in?.style || 'pop';
-            const inMov = (bp.in?.movement || 'bottom').toLowerCase();
+            const inStyle = (bp.in?.style || 'pop').toLowerCase();
 
             let x = 0;
             let y = 0;
@@ -1007,30 +1020,54 @@ class RpaCompositor {
                 const spring = Math.sin(t * Math.PI * 0.75) * (1.2 + stiffness * 0.3);
                 scale = (t > 0.7) ? (1.0 + (1.0 - t) * (0.3 + stiffness * 0.3)) : spring;
                 scale = Math.max(0, scale);
-            } else if (inStyle === 'pulsate') {
+            } else if (inStyle === 'pulsate' || inStyle === 'scale') {
                 const pulseBeats = Math.pow(Math.sin(t * Math.PI * 2.5), 2);
                 scale = t * 0.8 + pulseBeats * (0.35 + stiffness * 0.2);
-            } else if (inStyle === 'slide' || inStyle === 'slide-in') {
-                // Slide in from the full edge of the project resolution
-                const springSnap = Math.exp(-t * decayRate) * Math.cos(t * oscFreq) * (60 * (1 - t));
+            } else if (inStyle === 'slide' || inStyle === 'slide-in' || inStyle === 'slide-drift') {
+                // Slide in from completely outside project resolution edge
+                const springSnap = Math.exp(-t * decayRate) * Math.cos(t * oscFreq) * (50 * (1 - t));
                 const distY = (1 - t) * edgeDistY + springSnap;
                 const distX = (1 - t) * edgeDistX + springSnap;
-                if (inMov === 'bottom') y = distY;
-                else if (inMov === 'top') y = -distY;
-                else if (inMov === 'left') x = -distX;
-                else if (inMov === 'right') x = distX;
-                else if (inMov === 'center') scale = t;
+                if (inDir === 'bottom') y = distY;
+                else if (inDir === 'top') y = -distY;
+                else if (inDir === 'left') x = -distX;
+                else if (inDir === 'right') x = distX;
+                else if (inDir === 'center') scale = t;
+            } else if (inStyle === 'slide-bounce') {
+                const bounceDist = (1 - t) * (inDir === 'left' || inDir === 'right' ? edgeDistX : edgeDistY);
+                const rebound = Math.sin(t * Math.PI * (2.2 + stiffness * 1.5)) * Math.exp(-t * decayRate) * 80;
+                if (inDir === 'left') x = -bounceDist + rebound;
+                else if (inDir === 'right') x = bounceDist - rebound;
+                else if (inDir === 'top') y = -bounceDist + rebound;
+                else y = bounceDist - rebound;
+                scale = 1.0 + Math.abs(rebound) / 400;
             } else if (inStyle === 'bounce') {
-                const b = Math.abs(Math.sin(t * Math.PI * (2.0 + stiffness * 1.5))) * (1 - t) * 140;
-                y = -b;
+                const distY = (1 - t) * edgeDistY;
+                const distX = (1 - t) * edgeDistX;
+                const b = Math.abs(Math.sin(t * Math.PI * (2.0 + stiffness * 1.5))) * Math.exp(-t * decayRate) * 80;
+                if (inDir === 'left') x = -distX + b;
+                else if (inDir === 'right') x = distX - b;
+                else if (inDir === 'top') y = -distY + b;
+                else y = distY - b;
                 scale = 1.0 + (b > 10 ? 0.08 : -0.04);
             } else if (inStyle === 'fade') {
                 scale = 0.6 + t * 0.4;
                 opacity = t;
             } else if (inStyle === 'drop') {
                 const dropY = Math.pow(1 - t, 2) * -edgeDistY;
-                const rebound = Math.sin(t * Math.PI * 3) * Math.exp(-t * decayRate) * 40;
+                const rebound = Math.sin(t * Math.PI * 3) * Math.exp(-t * decayRate) * 45;
                 y = dropY + rebound;
+            } else if (inStyle === 'jump') {
+                const jumpY = Math.pow(1 - t, 2) * edgeDistY;
+                const rebound = -Math.sin(t * Math.PI * 3) * Math.exp(-t * decayRate) * 45;
+                y = jumpY + rebound;
+            } else if (inStyle === 'roller') {
+                const distX = (1 - t) * edgeDistX;
+                x = (inDir === 'right') ? distX : -distX;
+                rot = (inDir === 'right') ? (1 - t) * 360 : -(1 - t) * 360;
+            } else if (inStyle === 'spin-grow') {
+                scale = Math.max(0.01, t);
+                rot = (1 - t) * 720;
             } else if (inStyle === 'spring') {
                 const s = Math.sin(t * oscFreq) * Math.exp(-t * decayRate);
                 x = s * 100;
@@ -1045,8 +1082,7 @@ class RpaCompositor {
         // Phase 3: OUT (Exit)
         if (timeLeft < outDur) {
             const t = Math.max(0, Math.min(1, timeLeft / Math.max(0.01, outDur))); // 1 -> 0
-            const outStyle = bp.out?.style || 'slide';
-            const outMov = (bp.out?.movement || 'bottom').toLowerCase();
+            const outStyle = (bp.out?.style || 'slide').toLowerCase();
 
             let x = 0;
             let y = 0;
@@ -1054,28 +1090,40 @@ class RpaCompositor {
             let opacity = Math.min(1.0, t * 1.4);
             let rot = 0;
 
-            if (outStyle === 'slide' || outStyle === 'slide-out') {
+            if (outStyle === 'slide' || outStyle === 'slide-out' || outStyle === 'slide-drift') {
                 // Slide out off the edge of the project resolution
                 const distY = (1 - t) * edgeDistY;
                 const distX = (1 - t) * edgeDistX;
-                if (outMov === 'bottom') y = distY;
-                else if (outMov === 'top') y = -distY;
-                else if (outMov === 'left') x = -distX;
-                else if (outMov === 'right') x = distX;
-                else if (outMov === 'center') scale = t;
+                if (outDir === 'bottom') y = distY;
+                else if (outDir === 'top') y = -distY;
+                else if (outDir === 'left') x = -distX;
+                else if (outDir === 'right') x = distX;
+                else if (outDir === 'center') scale = t;
+            } else if (outStyle === 'slide-bounce') {
+                const distY = Math.pow(1 - t, 2) * edgeDistY;
+                const distX = Math.pow(1 - t, 2) * edgeDistX;
+                if (outDir === 'left') x = -distX;
+                else if (outDir === 'right') x = distX;
+                else if (outDir === 'top') y = -distY;
+                else y = distY;
+            } else if (outStyle === 'drop') {
+                y = Math.pow(1 - t, 2) * edgeDistY;
+            } else if (outStyle === 'bounce') {
+                y = Math.pow(1 - t, 2) * edgeDistY;
+                rot = (1 - t) * 15;
+            } else if (outStyle === 'roller') {
+                const distX = (1 - t) * edgeDistX;
+                x = (outDir === 'left') ? -distX : distX;
+                rot = (outDir === 'left') ? -(1 - t) * 360 : (1 - t) * 360;
             } else if (outStyle === 'pulsate') {
                 const pulseFade = Math.pow(Math.sin(t * Math.PI * 3.0), 2);
                 scale = t * 0.7 + pulseFade * 0.3;
                 opacity = t;
-            } else if (outStyle === 'bounce') {
-                y = Math.pow(1 - t, 2) * edgeDistY;
-                rot = (1 - t) * 15;
             } else if (outStyle === 'fade') {
                 opacity = t;
-            } else if (outStyle === 'shrink') {
+            } else if (outStyle === 'shrink' || outStyle === 'spin-grow') {
                 scale = Math.max(0, t);
-            } else if (outStyle === 'drop') {
-                y = Math.pow(1 - t, 2) * edgeDistY;
+                if (outStyle === 'spin-grow') rot = (1 - t) * 720;
             } else if (outStyle === 'none') {
                 scale = 1.0;
                 opacity = 1.0;
@@ -1171,8 +1219,24 @@ class RpaCompositor {
 
         const projW = (this.projectSettings?.width || this.projectWidth || (this.canvas ? this.canvas.width : 1920));
         const projH = (this.projectSettings?.height || this.projectHeight || (this.canvas ? this.canvas.height : 1080));
-        const edgeDistY = projH + 500;
-        const edgeDistX = projW + 500;
+        const edgeDistY = projH + 800;
+        const edgeDistX = projW + 800;
+
+        const resolveDir = (phaseObj) => {
+            if (!phaseObj) return 'bottom';
+            const dir = (phaseObj.direction || '').toLowerCase();
+            if (['left', 'right', 'top', 'bottom', 'center'].includes(dir)) return dir;
+            const mov = (phaseObj.movement || '').toLowerCase();
+            if (['left', 'right', 'top', 'bottom', 'center'].includes(mov)) return mov;
+            if (dir.includes('left') || mov.includes('left')) return 'left';
+            if (dir.includes('right') || mov.includes('right')) return 'right';
+            if (dir.includes('top') || dir.includes('up') || mov.includes('top') || mov.includes('up')) return 'top';
+            if (dir.includes('bottom') || dir.includes('down') || mov.includes('bottom') || mov.includes('down')) return 'bottom';
+            return 'bottom';
+        };
+
+        const inDir = resolveDir(bp.in);
+        const outDir = resolveDir(bp.out);
 
         // Phase 1: IN (Entrance) with wave progression
         const glyphInStart = unitOffset * 0.35;
@@ -1182,30 +1246,42 @@ class RpaCompositor {
                 return { dx: 0, dy: 0, scale: 0, scaleX: 0, scaleY: 0, rot: 0, opacity: 0, visible: false };
             }
             const t = Math.max(0, Math.min(1.0, (relTime - glyphInStart) / glyphInDur));
-            const inStyle = bp.in?.style || 'pop';
-            const inMov = (bp.in?.movement || 'bottom').toLowerCase();
+            const inStyle = (bp.in?.style || 'pop').toLowerCase();
             let dx = 0, dy = 0, scale = 1.0, rot = 0, opacity = Math.min(1.0, t * 1.8);
 
             if (inStyle === 'pop') {
                 const spring = Math.sin(t * Math.PI * 0.75) * (1.25 + stiffness * 0.35);
                 scale = (t > 0.7) ? (1.0 + (1.0 - t) * (0.3 + stiffness * 0.3)) : spring;
                 scale = Math.max(0, scale);
-            } else if (inStyle === 'pulsate') {
+            } else if (inStyle === 'pulsate' || inStyle === 'scale') {
                 const beats = Math.pow(Math.sin(t * Math.PI * 2.5), 2);
                 scale = t * 0.8 + beats * (0.4 + stiffness * 0.2);
-            } else if (inStyle === 'slide' || inStyle === 'slide-in') {
+            } else if (inStyle === 'slide' || inStyle === 'slide-in' || inStyle === 'slide-drift') {
                 // Slide in from the full edge of the project resolution
                 const springSnap = Math.exp(-t * decayRate) * Math.cos(t * oscFreq) * (50 * (1 - t));
                 const distY = (1 - t) * edgeDistY + springSnap;
                 const distX = (1 - t) * edgeDistX + springSnap;
-                if (inMov === 'bottom') dy = distY;
-                else if (inMov === 'top') dy = -distY;
-                else if (inMov === 'left') dx = -distX;
-                else if (inMov === 'right') dx = distX;
-                else if (inMov === 'center') scale = t;
+                if (inDir === 'bottom') dy = distY;
+                else if (inDir === 'top') dy = -distY;
+                else if (inDir === 'left') dx = -distX;
+                else if (inDir === 'right') dx = distX;
+                else if (inDir === 'center') scale = t;
+            } else if (inStyle === 'slide-bounce') {
+                const bounceDist = (1 - t) * (inDir === 'left' || inDir === 'right' ? edgeDistX : edgeDistY);
+                const rebound = Math.sin(t * Math.PI * (2.2 + stiffness * 1.5)) * Math.exp(-t * decayRate) * 70;
+                if (inDir === 'left') dx = -bounceDist + rebound;
+                else if (inDir === 'right') dx = bounceDist - rebound;
+                else if (inDir === 'top') dy = -bounceDist + rebound;
+                else dy = bounceDist - rebound;
+                scale = 1.0 + Math.abs(rebound) / 350;
             } else if (inStyle === 'bounce') {
-                const b = Math.abs(Math.sin(t * Math.PI * (2.2 + stiffness * 1.5))) * (1 - t) * 100;
-                dy = -b;
+                const distY = (1 - t) * edgeDistY;
+                const distX = (1 - t) * edgeDistX;
+                const b = Math.abs(Math.sin(t * Math.PI * (2.2 + stiffness * 1.5))) * Math.exp(-t * decayRate) * 60;
+                if (inDir === 'left') dx = -distX + b;
+                else if (inDir === 'right') dx = distX - b;
+                else if (inDir === 'top') dy = -distY + b;
+                else dy = distY - b;
                 scale = 1.0 + (b > 8 ? 0.1 : -0.05);
             } else if (inStyle === 'fade') {
                 scale = 0.5 + t * 0.5;
@@ -1214,6 +1290,17 @@ class RpaCompositor {
                 const dropY = Math.pow(1 - t, 2) * -edgeDistY;
                 const rebound = Math.sin(t * Math.PI * 3) * Math.exp(-t * decayRate) * 35;
                 dy = dropY + rebound;
+            } else if (inStyle === 'jump') {
+                const jumpY = Math.pow(1 - t, 2) * edgeDistY;
+                const rebound = -Math.sin(t * Math.PI * 3) * Math.exp(-t * decayRate) * 35;
+                dy = jumpY + rebound;
+            } else if (inStyle === 'roller') {
+                const distX = (1 - t) * edgeDistX;
+                dx = (inDir === 'right') ? distX : -distX;
+                rot = (inDir === 'right') ? (1 - t) * 360 : -(1 - t) * 360;
+            } else if (inStyle === 'spin-grow') {
+                scale = Math.max(0.01, t);
+                rot = (1 - t) * 720;
             } else if (inStyle === 'spring') {
                 const s = Math.sin(t * oscFreq) * Math.exp(-t * decayRate);
                 dy = s * 70;
@@ -1243,19 +1330,25 @@ class RpaCompositor {
                 return { dx: 0, dy: 0, scale: 0, scaleX: 0, scaleY: 0, rot: 0, opacity: 0, visible: false };
             }
             const t = Math.max(0, Math.min(1.0, (timeLeft - glyphOutStart) / glyphOutDur));
-            const outStyle = bp.out?.style || 'slide';
-            const outMov = (bp.out?.movement || 'bottom').toLowerCase();
+            const outStyle = (bp.out?.style || 'slide').toLowerCase();
             let dx = 0, dy = 0, scale = 1.0, rot = 0, opacity = Math.min(1.0, t * 1.5);
 
-            if (outStyle === 'slide' || outStyle === 'slide-out') {
+            if (outStyle === 'slide' || outStyle === 'slide-out' || outStyle === 'slide-drift') {
                 // Slide out off the edge of the project resolution
                 const distY = (1 - t) * edgeDistY;
                 const distX = (1 - t) * edgeDistX;
-                if (outMov === 'bottom') dy = distY;
-                else if (outMov === 'top') dy = -distY;
-                else if (outMov === 'left') dx = -distX;
-                else if (outMov === 'right') dx = distX;
-                else if (outMov === 'center') scale = t;
+                if (outDir === 'bottom') dy = distY;
+                else if (outDir === 'top') dy = -distY;
+                else if (outDir === 'left') dx = -distX;
+                else if (outDir === 'right') dx = distX;
+                else if (outDir === 'center') scale = t;
+            } else if (outStyle === 'slide-bounce') {
+                const distY = Math.pow(1 - t, 2) * edgeDistY;
+                const distX = Math.pow(1 - t, 2) * edgeDistX;
+                if (outDir === 'left') dx = -distX;
+                else if (outDir === 'right') dx = distX;
+                else if (outDir === 'top') dy = -distY;
+                else dy = distY;
             } else if (outStyle === 'pulsate') {
                 const pulseFade = Math.pow(Math.sin(t * Math.PI * 3.0), 2);
                 scale = t * 0.7 + pulseFade * 0.3;
@@ -1263,12 +1356,17 @@ class RpaCompositor {
             } else if (outStyle === 'bounce') {
                 dy = Math.pow(1 - t, 2) * edgeDistY;
                 rot = (1 - t) * 18;
-            } else if (outStyle === 'fade') {
-                opacity = t;
-            } else if (outStyle === 'shrink') {
-                scale = Math.max(0, t);
             } else if (outStyle === 'drop') {
                 dy = Math.pow(1 - t, 2) * edgeDistY;
+            } else if (outStyle === 'roller') {
+                const distX = (1 - t) * edgeDistX;
+                dx = (outDir === 'left') ? -distX : distX;
+                rot = (outDir === 'left') ? -(1 - t) * 360 : (1 - t) * 360;
+            } else if (outStyle === 'fade') {
+                opacity = t;
+            } else if (outStyle === 'shrink' || outStyle === 'spin-grow') {
+                scale = Math.max(0, t);
+                if (outStyle === 'spin-grow') rot = (1 - t) * 720;
             } else if (outStyle === 'none') {
                 scale = 1.0;
                 opacity = 1.0;
@@ -1423,26 +1521,30 @@ class RpaCompositor {
             return { x: 0, y: 0, scale: s, rotation: 0, opacity: 1.0 };
         }
 
-        // 3. Slide & Drift (Glide Entrance + Hover Glide)
+        // 3. Slide & Drift (Glide Entrance from Screen Edge + Continuous Hover Drift + Exit to Edge)
         if (behavior === 'slide' || behavior === 'slide-drift') {
+            const projW = (this.projectSettings?.width || this.projectWidth || (this.canvas ? this.canvas.width : 1920));
             const projH = (this.projectSettings?.height || this.projectHeight || (this.canvas ? this.canvas.height : 1080));
-            const edgeDistY = projH + 500;
+            const edgeDistX = projW + 800;
+            let x = 0;
             let y = 0;
             let o = 1.0;
-            if (relTime < 0.6) {
-                const t = relTime / 0.6;
+            if (relTime < 0.7) {
+                const t = relTime / 0.7;
                 const ease = (1 - t) * (1 - t);
-                y = ease * edgeDistY;
-                o = t;
-            } else if (duration - relTime < 0.5) {
-                const t = (duration - relTime) / 0.5;
+                x = -ease * edgeDistX; // Slide in from beyond left edge
+                o = Math.min(1.0, t * 1.5);
+            } else if (duration - relTime < 0.6) {
+                const t = Math.max(0, (duration - relTime) / 0.6);
                 const ease = (1 - t) * (1 - t);
-                y = ease * edgeDistY;
-                o = t;
+                x = ease * edgeDistX; // Slide out past right edge
+                o = Math.min(1.0, t * 1.5);
             } else {
-                y = Math.sin(relTime * 2.0) * 8;
+                const tMid = relTime - 0.7;
+                x = Math.sin(tMid * 1.2) * 22;
+                y = Math.cos(tMid * 1.6) * 14;
             }
-            return { x: 0, y, scale: 1.0, rotation: 0, opacity: Math.max(0, Math.min(1, o)) };
+            return { x, y, scale: 1.0, rotation: 0, opacity: Math.max(0, Math.min(1, o)) };
         }
 
         // 4. Jump & Fall (Continuous Gravity Rebound with Squash & Stretch)

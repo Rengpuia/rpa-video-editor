@@ -101,7 +101,7 @@ class RpaScreenRecorder {
                 // Webcam Styling Parameters
                 const shape = options.webcamShape || 'circle';
                 const pos = options.webcamPosition || 'bottom-right';
-                const sizeRatio = Math.max(0.12, Math.min(0.5, options.webcamSize || 0.22));
+                const sizeRatio = Math.max(0.08, Math.min(0.75, options.webcamSize || 0.22));
                 const borderWidth = options.webcamBorderWidth !== undefined ? options.webcamBorderWidth : 3;
                 const borderColor = options.webcamBorderColor || '#38bdf8';
                 const hasShadow = options.webcamShadow !== false;
@@ -115,7 +115,7 @@ class RpaScreenRecorder {
 
                     // 2. Calculate Webcam Overlay Coordinates
                     const overlayW = Math.round(cw * sizeRatio);
-                    const overlayH = overlayW; // Keep 1:1 aspect bounding box for regular geometry
+                    const overlayH = (shape === 'rect' || shape === 'oval') ? Math.round(overlayW * (9 / 16)) : overlayW;
                     const margin = Math.round(Math.min(cw, ch) * 0.035);
 
                     let ox = cw - overlayW - margin;
@@ -130,6 +130,9 @@ class RpaScreenRecorder {
                     } else if (pos === 'top-left') {
                         ox = margin;
                         oy = margin;
+                    } else if (pos === 'custom' && options.webcamCustomPos) {
+                        ox = Math.max(0, Math.min(cw - overlayW, Math.round(options.webcamCustomPos.x * cw)));
+                        oy = Math.max(0, Math.min(ch - overlayH, Math.round(options.webcamCustomPos.y * ch)));
                     }
 
                     const cx = ox + overlayW / 2;
