@@ -214,6 +214,17 @@ class RpaCompositor {
             v.crossOrigin = 'anonymous';
             v.muted = true;
             v.playsInline = true;
+            v.preload = 'auto';
+            v.addEventListener('loadeddata', () => {
+                if (window.rpaStudio && !window.rpaStudio.isPlaying) {
+                    window.rpaStudio.compositor.renderFrame(window.rpaStudio.timeline, window.rpaStudio.playheadTime);
+                }
+            });
+            v.addEventListener('seeked', () => {
+                if (window.rpaStudio && !window.rpaStudio.isPlaying) {
+                    window.rpaStudio.compositor.renderFrame(window.rpaStudio.timeline, window.rpaStudio.playheadTime);
+                }
+            });
             this.videoElements.set(sourceUrl, v);
         }
         return this.videoElements.get(sourceUrl);
@@ -523,11 +534,24 @@ class RpaCompositor {
                             this.applyChromaKey(drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
                         }
                     } else {
-                        this.renderProceduralWorkstation(drawX, drawY, drawW, drawH, relTime, clip.title);
+                        // Clean neutral dark placeholder while decoding video frame
+                        this.ctx.fillStyle = '#0f172a';
+                        this.ctx.fillRect(drawX, drawY, drawW, drawH);
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                        this.ctx.font = '14px sans-serif';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.fillText(clip.title || 'Loading media...', drawX + drawW / 2, drawY + drawH / 2);
                     }
                 } else {
-                    // Procedural Workstation Screen Recording for demo clips / templates
-                    this.renderProceduralWorkstation(drawX, drawY, drawW, drawH, relTime, clip.title);
+                    // Clean neutral clip placeholder
+                    this.ctx.fillStyle = '#1e293b';
+                    this.ctx.fillRect(drawX, drawY, drawW, drawH);
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                    this.ctx.font = 'bold 15px sans-serif';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(clip.title || 'Video Clip', drawX + drawW / 2, drawY + drawH / 2);
                 }
 
                 // Device Frame overlay (Mac / Windows)

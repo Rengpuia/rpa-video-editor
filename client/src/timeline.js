@@ -165,13 +165,18 @@ class RpaTimeline {
 
     addClip(clipData) {
         const id = `clip_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+        const trackId = clipData.trackId !== undefined ? clipData.trackId : 2;
+        const duration = Math.max(0.2, clipData.duration || 5.0);
+        const reqStart = Math.max(0, clipData.startTime || 0.0);
+        const startTime = this.findFreeSlot(trackId, reqStart, duration);
+
         const clip = {
             id,
             title: clipData.title || 'Untitled Clip',
             type: clipData.type || 'video',
-            trackId: clipData.trackId !== undefined ? clipData.trackId : 2,
-            startTime: Math.max(0, clipData.startTime || 0.0),
-            duration: Math.max(0.2, clipData.duration || 5.0),
+            trackId,
+            startTime,
+            duration,
             sourceUrl: clipData.sourceUrl || null,
             telemetry: clipData.telemetry || [],
             scale: clipData.scale || 1.0,
@@ -249,9 +254,147 @@ class RpaTimeline {
         };
 
         this.clips.push(clip);
+        this.resolveTrackOverlaps(trackId);
         this.updateTotalDuration();
         this.saveSnapshot();
         return clip;
+    }
+
+    /**
+     * Strict Timeline Overlap Prevention Engine
+     * Ensures media and clips on any track never collide or overlap each other.
+     */
+    findFreeSlot(trackId, desiredStart, duration, excludeClipId = null) {
+        desiredStart = Math.max(0, desiredStart || 0);
+        duration = Math.max(0.1, duration || 1.0);
+
+        const otherClips = this.clips
+            .filter(c => c.id !== excludeClipId && c.trackId === trackId)
+            .sort((a, b) => a.startTime - b.startTime);
+
+        if (otherClips.length === 0) {
+            return desiredStart;
+        }
+
+        const isFreeAt = (start) => {
+            const end = start + duration;
+            for (const c of otherClips) {
+                const cStart = c.startTime;
+                const cEnd = c.startTime + c.duration;
+                if (start < (cEnd - 0.001) && end > (cStart + 0.001)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        if (isFreeAt(desiredStart)) {
+            return desiredStart;
+        }
+
+        if (desiredStart < otherClips[0].startTime && isFreeAt(0)) {
+            return 0;
+        }
+
+        for (let i = 0; i < otherClips.length; i++) {
+            const gapStart = otherClips[i].startTime + otherClips[i].duration;
+            if (gapStart >= (desiredStart - 0.001) && isFreeAt(gapStart)) {
+                return gapStart;
+            }
+        }
+
+        for (let i = 0; i < otherClips.length; i++) {
+            const gapStart = otherClips[i].startTime + otherClips[i].duration;
+            if (isFreeAt(gapStart)) {
+                return gapStart;
+            }
+        }
+
+        const lastClip = otherClips[otherClips.length - 1];
+        return Math.max(0, lastClip.startTime + lastClip.duration);
+    }
+
+    clampClipPosition(clipId, trackId, candidateStart, duration, origStart = 0) {
+        candidateStart = Math.max(0, candidateStart || 0);
+        duration = Math.max(0.1, duration || 1.0);
+
+        const otherClips = this.clips
+            .filter(c => c.id !== clipId && c.trackId === trackId)
+            .sort((a, b) => a.startTime - b.startTime);
+
+        if (otherClips.length === 0) {
+            return candidateStart;
+        }
+
+        const gaps = [];
+        if (otherClips[0].startTime >= (duration - 0.001)) {
+            gaps.push({ start: 0, end: otherClips[0].startTime });
+        }
+
+        for (let i = 0; i < otherClips.length - 1; i++) {
+            const gStart = otherClips[i].startTime + otherClips[i].duration;
+            const gEnd = otherClips[i + 1].startTime;
+            if ((gEnd - gStart) >= (duration - 0.001)) {
+                gaps.push({ start: gStart, end: gEnd });
+            }
+        }
+
+        const lastEnd = otherClips[otherClips.length - 1].startTime + otherClips[otherClips.length - 1].duration;
+        gaps.push({ start: lastEnd, end: Infinity });
+
+        let bestStart = candidateStart;
+        let minDistance = Infinity;
+
+        for (const gap of gaps) {
+            const minAllowed = gap.start;
+            const maxAllowed = gap.end === Infinity ? Infinity : (gap.end - duration);
+            const clamped = Math.max(minAllowed, Math.min(maxAllowed, candidateStart));
+            const dist = Math.abs(clamped - candidateStart);
+            if (dist < minDistance) {
+                minDistance = dist;
+                bestStart = clamped;
+            }
+        }
+
+        return bestStart;
+    }
+
+    clampTrimLeft(clipId, trackId, candidateStart, currentEnd) {
+        const otherClips = this.clips
+            .filter(c => c.id !== clipId && c.trackId === trackId && (c.startTime + c.duration) <= (currentEnd - 0.001));
+
+        const minStart = otherClips.length > 0
+            ? Math.max(0, ...otherClips.map(c => c.startTime + c.duration))
+            : 0;
+
+        const maxStart = currentEnd - 0.2;
+        return Math.max(minStart, Math.min(maxStart, candidateStart));
+    }
+
+    clampTrimRight(clipId, trackId, currentStart, candidateEnd) {
+        const otherClips = this.clips
+            .filter(c => c.id !== clipId && c.trackId === trackId && c.startTime >= (currentStart + 0.001));
+
+        const maxEnd = otherClips.length > 0
+            ? Math.min(...otherClips.map(c => c.startTime))
+            : Infinity;
+
+        const minEnd = currentStart + 0.2;
+        return Math.max(minEnd, Math.min(maxEnd, candidateEnd));
+    }
+
+    resolveTrackOverlaps(trackId) {
+        const trackClips = this.clips
+            .filter(c => c.trackId === trackId)
+            .sort((a, b) => a.startTime - b.startTime);
+
+        let curTime = 0;
+        for (const clip of trackClips) {
+            if (clip.startTime < curTime) {
+                clip.startTime = curTime;
+            }
+            curTime = clip.startTime + clip.duration;
+        }
     }
 
     getClip(id) {
@@ -956,6 +1099,7 @@ class RpaTimeline {
                     const startX = e.clientX;
                     const origStart = clip.startTime;
                     const origDur = clip.duration;
+                    const origTrackId = clip.trackId;
                     const origDurIn = clip.transitionInDuration !== undefined ? clip.transitionInDuration : 0.8;
                     const origDurOut = clip.transitionOutDuration !== undefined ? clip.transitionOutDuration : 0.8;
 
@@ -1155,9 +1299,10 @@ class RpaTimeline {
                         }
 
                         if (action === 'trim-left') {
-                            let newStart = Math.max(0, origStart + deltaSec);
+                            let newStart = origStart + deltaSec;
                             const snap = this.findSnapPoint(newStart, clip.id);
                             if (snap.snapped) newStart = snap.time;
+                            newStart = this.clampTrimLeft(clip.id, clip.trackId, newStart, origStart + origDur);
                             const newDur = Math.max(0.2, (origStart + origDur) - newStart);
                             clip.startTime = newStart;
                             clip.duration = newDur;
@@ -1174,6 +1319,7 @@ class RpaTimeline {
                             let candidateEnd = origStart + origDur + deltaSec;
                             const snap = this.findSnapPoint(candidateEnd, clip.id);
                             if (snap.snapped) candidateEnd = snap.time;
+                            candidateEnd = this.clampTrimRight(clip.id, clip.trackId, clip.startTime, candidateEnd);
                             clip.duration = Math.max(0.2, candidateEnd - clip.startTime);
                             if (clip.transitionInDuration > clip.duration * 0.48) clip.transitionInDuration = clip.duration * 0.48;
                             if (clip.transitionOutDuration > clip.duration * 0.48) clip.transitionOutDuration = clip.duration * 0.48;
@@ -1189,12 +1335,12 @@ class RpaTimeline {
                             const snapEnd = this.findSnapPoint(candidateEnd, clip.id, origStart + origDur);
 
                             if (snapStart.snapped) {
-                                clip.startTime = snapStart.time;
+                                candidateStart = snapStart.time;
                             } else if (snapEnd.snapped) {
-                                clip.startTime = Math.max(0, snapEnd.time - origDur);
-                            } else {
-                                clip.startTime = candidateStart;
+                                candidateStart = Math.max(0, snapEnd.time - origDur);
                             }
+
+                            clip.startTime = this.clampClipPosition(clip.id, clip.trackId, candidateStart, origDur, origStart);
                             if (window.rpaStudio) {
                                 const pStart = document.getElementById('propStart');
                                 if (pStart) pStart.value = clip.startTime.toFixed(1);
@@ -1217,6 +1363,10 @@ class RpaTimeline {
                         window.removeEventListener('pointerup', onClipEnd);
                         window.removeEventListener('mousemove', onClipMove);
                         window.removeEventListener('mouseup', onClipEnd);
+                        if (origTrackId !== clip.trackId) {
+                            this.resolveTrackOverlaps(origTrackId);
+                        }
+                        this.resolveTrackOverlaps(clip.trackId);
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {

@@ -2070,7 +2070,13 @@ class RpaStudioApp {
         const moveClipToTrack = (targetTrackId) => {
             const clip = this.timeline.getClip(this.timeline.selectedClipId);
             if (!clip) return;
+            const oldTrackId = clip.trackId;
             clip.trackId = targetTrackId;
+            clip.startTime = this.timeline.clampClipPosition(clip.id, targetTrackId, clip.startTime, clip.duration, clip.startTime);
+            this.timeline.resolveTrackOverlaps(targetTrackId);
+            if (oldTrackId !== targetTrackId) {
+                this.timeline.resolveTrackOverlaps(oldTrackId);
+            }
             if (lblPositionZ) lblPositionZ.innerText = `Track ${targetTrackId}`;
             this.renderTimeline();
             this.timeline.saveSnapshot();
@@ -2302,7 +2308,9 @@ class RpaStudioApp {
             propStart.onchange = (e) => {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip) {
-                    clip.startTime = Math.max(0, parseFloat(e.target.value));
+                    const reqStart = Math.max(0, parseFloat(e.target.value) || 0);
+                    clip.startTime = this.timeline.clampClipPosition(clip.id, clip.trackId, reqStart, clip.duration, clip.startTime);
+                    propStart.value = clip.startTime.toFixed(1);
                     this.timeline.updateTotalDuration();
                     this.timeline.saveSnapshot();
                     this.renderTimeline();
@@ -2316,7 +2324,10 @@ class RpaStudioApp {
             propDuration.onchange = (e) => {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip) {
-                    clip.duration = Math.max(0.2, parseFloat(e.target.value));
+                    const reqDur = Math.max(0.2, parseFloat(e.target.value) || 1.0);
+                    const clampedEnd = this.timeline.clampTrimRight(clip.id, clip.trackId, clip.startTime, clip.startTime + reqDur);
+                    clip.duration = Math.max(0.2, clampedEnd - clip.startTime);
+                    propDuration.value = clip.duration.toFixed(1);
                     this.timeline.updateTotalDuration();
                     this.timeline.saveSnapshot();
                     this.renderTimeline();
@@ -2970,41 +2981,11 @@ class RpaStudioApp {
     }
 
     setupDemoContent() {
-        this.timeline.addClip({
-            title: 'Welcome Screen Recording.mp4',
-            type: 'video',
-            trackId: 2,
-            startTime: 0.0,
-            duration: 10.0,
-            telemetry: [
-                { time: 1.0, x: 0.25, y: 0.35, type: 'mousemove' },
-                { time: 2.2, x: 0.50, y: 0.50, type: 'mousedown' },
-                { time: 4.5, x: 0.75, y: 0.40, type: 'mousemove' },
-                { time: 6.0, x: 0.30, y: 0.60, type: 'mousedown' }
-            ]
-        });
-
-        this.timeline.addClip({
-            title: 'Title Header',
-            type: 'callout',
-            trackId: 4,
-            startTime: 0.5,
-            duration: 4.5,
-            text: 'RPA VIDEO EDITOR STUDIO PRO'
-        });
-
-        this.timeline.addMarker(0.0, 'Intro');
-        this.timeline.addMarker(5.0, 'Step 1: Capture');
-
-        this.mediaBin = [
-            {
-                id: 'cardDemoClip',
-                name: 'Welcome Demo.mp4',
-                type: 'video',
-                duration: 10.0,
-                sub: 'RPA Automation Workflow Showcase'
-            }
-        ];
+        this.timeline.clips = [];
+        this.timeline.markers = [];
+        this.timeline.captions = [];
+        this.timeline.totalDuration = 30.0;
+        this.mediaBin = [];
         this.renderMediaBin();
         this.updateTimelineRuler();
         this.renderTimeline();
@@ -3031,10 +3012,12 @@ class RpaStudioApp {
             subText: defaults.subText,
             aspectRatioLocked: false
         };
-        this.timeline.addClip(newClip);
-        const added = this.timeline.clips[this.timeline.clips.length - 1];
-        this.timeline.selectedClipId = added.id;
-        this.renderProperties(added);
+        const added = this.timeline.addClip(newClip);
+        if (added) {
+            this.timeline.selectedClipId = added.id;
+            this.playheadTime = added.startTime + added.duration;
+            this.renderProperties(added);
+        }
         this.renderTimeline();
         this.updateTimelineRuler();
         this.compositor.renderFrame(this.timeline, this.playheadTime);
@@ -3661,7 +3644,7 @@ class RpaStudioApp {
 
         const dur = Math.max(1.0, result.duration);
         const clipTitle = `Capture_${new Date().toLocaleTimeString().replace(/:/g, '-')}.webm`;
-        this.timeline.addClip({
+        const added = this.timeline.addClip({
             title: clipTitle,
             type: 'video',
             trackId: 2,
@@ -3670,6 +3653,9 @@ class RpaStudioApp {
             sourceUrl: result.videoUrl,
             telemetry: result.telemetry
         });
+        if (added) {
+            this.playheadTime = added.startTime + added.duration;
+        }
 
         // Add to Media Bin & Captures
         this.addMediaToBin({
@@ -3711,7 +3697,7 @@ class RpaStudioApp {
                     sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB • ${mediaType.toUpperCase()}`
                 });
 
-                this.timeline.addClip({
+                const addedClip = this.timeline.addClip({
                     title: file.name,
                     type: mediaType,
                     trackId: isAudio ? 1 : 2,
@@ -3719,6 +3705,9 @@ class RpaStudioApp {
                     duration: dur,
                     sourceUrl: url
                 });
+                if (addedClip) {
+                    this.playheadTime = addedClip.startTime + addedClip.duration;
+                }
 
                 this.renderTimeline();
                 this.updateTimelineRuler();
@@ -3734,7 +3723,7 @@ class RpaStudioApp {
                     sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
                 });
 
-                this.timeline.addClip({
+                const addedClip = this.timeline.addClip({
                     title: file.name,
                     type: mediaType,
                     trackId: isAudio ? 1 : 2,
@@ -3742,6 +3731,9 @@ class RpaStudioApp {
                     duration: 10.0,
                     sourceUrl: url
                 });
+                if (addedClip) {
+                    this.playheadTime = addedClip.startTime + addedClip.duration;
+                }
 
                 this.renderTimeline();
                 this.updateTimelineRuler();
@@ -3850,13 +3842,15 @@ class RpaStudioApp {
             yOffset: 0,
             aspectRatioLocked: true
         };
-        this.timeline.addClip(newClip);
-        const added = this.timeline.clips[this.timeline.clips.length - 1];
-        this.timeline.selectedClipId = added.id;
+        const added = this.timeline.addClip(newClip);
+        if (added) {
+            this.timeline.selectedClipId = added.id;
+            this.playheadTime = added.startTime + added.duration;
+            this.renderProperties(added);
+        }
         this.timeline.saveSnapshot();
         this.renderTimeline();
         this.updateTimelineRuler();
-        this.renderProperties(added);
         this.compositor.renderFrame(this.timeline, this.playheadTime);
         this.markDirty(true);
     }
@@ -3889,8 +3883,12 @@ class RpaStudioApp {
         if (newClip.title && !newClip.title.includes('(Copy)')) {
             newClip.title = `${newClip.title} (Copy)`;
         }
-        this.timeline.addClip(newClip);
-        this.timeline.selectedClipId = newClip.id;
+        const added = this.timeline.addClip(newClip);
+        if (added) {
+            this.timeline.selectedClipId = added.id;
+            this.playheadTime = added.startTime + added.duration;
+            this.renderProperties(added);
+        }
         this.timeline.saveSnapshot();
         this.renderTimeline();
         this.updateTimelineRuler();
@@ -5235,14 +5233,17 @@ class RpaStudioApp {
                 subText: defaults.subText,
                 aspectRatioLocked: false
             };
-            this.timeline.addClip(newClip);
-            const added = this.timeline.clips[this.timeline.clips.length - 1];
-            this.timeline.selectedClipId = added.id;
-            this.renderProperties(added);
+            const added = this.timeline.addClip(newClip);
+            if (added) {
+                this.timeline.selectedClipId = added.id;
+                this.playheadTime = added.startTime + added.duration;
+                this.renderProperties(added);
+            }
         } else if (toolType === 'sfx') {
             this.sfxGenerator.addToTimeline(this.timeline, toolName, this.playheadTime, 2).then(newClip => {
                 if (newClip) {
                     this.timeline.selectedClipId = newClip.id;
+                    this.playheadTime = newClip.startTime + newClip.duration;
                     this.renderProperties(newClip);
                 }
                 this.renderTimeline();
@@ -5252,20 +5253,19 @@ class RpaStudioApp {
             return;
         } else if (toolType === 'media') {
             const mediaItem = (this.mediaBin || []).find(m => m.name === toolName || m.id === toolName);
-            const isAudio = mediaItem ? mediaItem.type === 'audio' : false;
-            this.timeline.addClip({
-                title: mediaItem ? mediaItem.name : (toolName || 'Demo Clip.mp4'),
+            if (!mediaItem) {
+                alert('Please import media into the Media Bin first.');
+                return;
+            }
+            const isAudio = mediaItem.type === 'audio';
+            const added = this.timeline.addClip({
+                title: mediaItem.name,
                 type: isAudio ? 'audio' : 'video',
                 trackId: isAudio ? 1 : 2,
                 startTime: this.playheadTime,
-                duration: mediaItem?.duration || 10.0,
-                sourceUrl: mediaItem?.url || '',
-                telemetry: mediaItem?.telemetry || [
-                    { time: 1.0, x: 0.25, y: 0.35, type: 'mousemove' },
-                    { time: 2.2, x: 0.50, y: 0.50, type: 'mousedown' },
-                    { time: 4.5, x: 0.75, y: 0.40, type: 'mousemove' },
-                    { time: 6.0, x: 0.30, y: 0.60, type: 'mousedown' }
-                ],
+                duration: mediaItem.duration || 10.0,
+                sourceUrl: mediaItem.url || '',
+                telemetry: mediaItem.telemetry || null,
                 scale: 1.0,
                 scaleX: 1.0,
                 scaleY: 1.0,
@@ -5273,10 +5273,12 @@ class RpaStudioApp {
                 yOffset: 0,
                 aspectRatioLocked: true
             });
-            const added = this.timeline.clips[this.timeline.clips.length - 1];
-            this.timeline.selectedClipId = added.id;
-            this.renderProperties(added);
-            this.markDirty(true);
+            if (added) {
+                this.timeline.selectedClipId = added.id;
+                this.playheadTime = added.startTime + added.duration;
+                this.renderProperties(added);
+                this.markDirty(true);
+            }
         } else if (targetClip) {
             this.handleToolDropOnClip(null, targetClip.id, { toolType, toolName });
             return;
@@ -5323,10 +5325,11 @@ class RpaStudioApp {
                 subText: defaults.subText,
                 aspectRatioLocked: false
             };
-            this.timeline.addClip(newClip);
-            const added = this.timeline.clips[this.timeline.clips.length - 1];
-            this.timeline.selectedClipId = added.id;
-            this.renderProperties(added);
+            const added = this.timeline.addClip(newClip);
+            if (added) {
+                this.timeline.selectedClipId = added.id;
+                this.renderProperties(added);
+            }
         } else if (data.toolType === 'sfx') {
             this.sfxGenerator.addToTimeline(this.timeline, data.toolName, dropTime, trackId).then(newClip => {
                 if (newClip) {
@@ -5340,20 +5343,19 @@ class RpaStudioApp {
             return;
         } else if (data.toolType === 'media') {
             const mediaItem = (this.mediaBin || []).find(m => m.id === data.mediaId || m.name === data.toolName);
+            if (!mediaItem && !data.url) {
+                alert('Please import media into the Media Bin first.');
+                return;
+            }
             const isAudio = (data.mediaType === 'audio') || (mediaItem && mediaItem.type === 'audio');
-            this.timeline.addClip({
+            const added = this.timeline.addClip({
                 title: data.toolName || (mediaItem ? mediaItem.name : 'Media Clip'),
                 type: isAudio ? 'audio' : 'video',
                 trackId,
                 startTime: dropTime,
                 duration: data.duration || mediaItem?.duration || 10.0,
                 sourceUrl: data.url || mediaItem?.url || '',
-                telemetry: mediaItem?.telemetry || [
-                    { time: 1.0, x: 0.25, y: 0.35, type: 'mousemove' },
-                    { time: 2.2, x: 0.50, y: 0.50, type: 'mousedown' },
-                    { time: 4.5, x: 0.75, y: 0.40, type: 'mousemove' },
-                    { time: 6.0, x: 0.30, y: 0.60, type: 'mousedown' }
-                ],
+                telemetry: mediaItem?.telemetry || null,
                 scale: 1.0,
                 scaleX: 1.0,
                 scaleY: 1.0,
@@ -5361,11 +5363,11 @@ class RpaStudioApp {
                 yOffset: 0,
                 aspectRatioLocked: true
             });
-            const added = this.timeline.clips[this.timeline.clips.length - 1];
-            this.timeline.selectedClipId = added.id;
-            this.renderProperties(added);
-            this.markDirty(true);
-            this.renderProperties(added);
+            if (added) {
+                this.timeline.selectedClipId = added.id;
+                this.renderProperties(added);
+                this.markDirty(true);
+            }
         } else {
             // Transitions, behaviors, effects, or audio-fx dropped on track
             const targetClip = this.timeline.clips.find(c => c.trackId === trackId && dropTime >= c.startTime && dropTime <= (c.startTime + c.duration));
@@ -7061,6 +7063,8 @@ class RpaStudioApp {
         this.timeline.selectedClipId = null;
         this.timeline.selectionStart = null;
         this.timeline.selectionEnd = null;
+        this.mediaBin = [];
+        this.renderMediaBin();
         this.timeline.saveSnapshot();
         this.seek(0);
         this.renderTimeline();
