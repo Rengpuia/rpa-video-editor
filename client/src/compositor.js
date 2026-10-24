@@ -443,10 +443,12 @@ class RpaCompositor {
 
             if (clip.type === 'callout') {
                 const b = this.getCalloutBounds(clip, width, height);
+                const baseScaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
+                const baseScaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
                 const bScale = behaviorTransform.scale !== undefined ? behaviorTransform.scale : 1.0;
                 const tScale = transitionTransform.scale !== undefined ? transitionTransform.scale : 1.0;
-                const sX = (kf.scaleX || kf.scale || 1.0) * bScale * tScale;
-                const sY = (kf.scaleY || kf.scale || 1.0) * bScale * tScale;
+                const sX = baseScaleX * (kf.scaleX || kf.scale || 1.0) * bScale * tScale;
+                const sY = baseScaleY * (kf.scaleY || kf.scale || 1.0) * bScale * tScale;
                 drawW = b.bw * sX;
                 drawH = b.bh * sY;
                 drawX = b.bx + (b.bw - drawW) / 2 + (behaviorTransform.x || 0) + (transitionTransform.x || 0) + kf.x;
@@ -474,11 +476,11 @@ class RpaCompositor {
                 this.ctx.translate(-(drawX + drawW / 2), -(drawY + drawH / 2));
             }
 
-            // Apply Transition Geometric Clipping (Wipe / Circle / Flash / Flare) across all clips including Annotations/Callouts
+            // Apply Transition Geometric Clipping (Wipe / Circle / Flash / Flare) across clips
             this.applyTransitionClipping(clip, relTime, clip.duration, drawX, drawY, drawW, drawH);
 
-            // Drop shadow with enhanced power, blur and depth
-            if (fx.dropShadow) {
+            // Drop shadow with enhanced power, blur and depth (for media/video clips; callouts render their own styled typography shadows)
+            if (fx.dropShadow && clip.type !== 'callout') {
                 const power = fx.dropShadowPower !== undefined ? fx.dropShadowPower : (clip.dropShadowPower !== undefined ? clip.dropShadowPower : 2);
                 const blur = (fx.dropShadowBlur !== undefined ? fx.dropShadowBlur : (clip.dropShadowBlur !== undefined ? clip.dropShadowBlur : 35)) * (power >= 2 ? 1.4 : 1.0);
                 const offY = (fx.dropShadowOffsetY !== undefined ? fx.dropShadowOffsetY : 14) * (power >= 2 ? 1.3 : 1.0);
@@ -490,8 +492,8 @@ class RpaCompositor {
                 this.ctx.shadowOffsetY = Math.round(offY);
             }
 
-            // Rounded corners
-            if (fx.borderRadius > 0) {
+            // Rounded corners (for video clips; callouts render vector corner radius)
+            if (fx.borderRadius > 0 && clip.type !== 'callout') {
                 this.roundRect(this.ctx, drawX, drawY, drawW, drawH, fx.borderRadius);
                 this.ctx.clip();
             }
@@ -823,8 +825,10 @@ class RpaCompositor {
         let bw, bh, bx, by;
 
         if (title.includes('plain text') || title === 'text' || subtype === 'text' || subtype === 'plain-text') {
+            const text = clip.text || '';
+            const lineCount = Math.max(1, text.split('\n').length);
             bw = clip.width || Math.min(width * 0.6, 800);
-            bh = clip.height || Math.max(70, (clip.fontSize || 38) * 1.8);
+            bh = clip.height || Math.max(70, (clip.fontSize || 38) * 1.5 * lineCount + 20);
             bx = (width - bw) / 2 + (clip.xOffset || 0);
             by = (height - bh) / 2 + (clip.yOffset || 0);
         } else if (title.includes('title') || subtype === 'title') {
@@ -1959,11 +1963,6 @@ class RpaCompositor {
         const durOut = clip.transitionOutDuration || 0.8;
         const timeLeft = duration - relTime;
 
-        // Always scope transition clipping strictly to the clip's visual bounds
-        this.ctx.beginPath();
-        this.ctx.rect(drawX, drawY, drawW, drawH);
-        this.ctx.clip();
-
         // 1. Geometric Clipping Transitions
         // Linear Wipe Left
         if ((tin === 'wipe-left' || tin === 'wipe') && relTime < durIn) {
@@ -2838,7 +2837,7 @@ class RpaCompositor {
         return w;
     }
 
-    renderStyledText(ctx, rawText, x, y, clip, bScale = 1.0, align = 'center', baseline = 'middle', fontTrans = null, relTime = 0, duration = 4.0) {
+    renderStyledText(ctx, rawText, x, y, clip, bScale = 1.0, align = 'center', baseline = 'middle', fontTrans = null, relTime = 0, duration = 4.0, maxWidth = 0) {
         if (rawText === undefined || rawText === null || rawText === '') return;
 
         // Font-Targeted Transitions (Shutter Strobe, White Flash, Glitch, Slide, Zoom)
@@ -2893,8 +2892,39 @@ class RpaCompositor {
         const lineSpacing = (clip.lineSpacing !== undefined ? clip.lineSpacing : 1.2);
         const lineHeight = fSize * lineSpacing;
 
-        // Multi-line support
-        const lines = text.split('\n');
+        // Multi-line & Word-wrapping support
+        let lines = [];
+        const rawLines = text.split('\n');
+        if (maxWidth && maxWidth > 40) {
+            for (const rLine of rawLines) {
+                if (!rLine) {
+                    lines.push('');
+                    continue;
+                }
+                const words = rLine.split(' ');
+                let curLine = '';
+                for (let i = 0; i < words.length; i++) {
+                    const testLine = curLine ? (curLine + ' ' + words[i]) : words[i];
+                    let w = 0;
+                    for (let c = 0; c < testLine.length; c++) {
+                        w += ctx.measureText(testLine[c]).width + tracking;
+                    }
+                    if (w > maxWidth && curLine) {
+                        lines.push(curLine);
+                        curLine = words[i];
+                    } else {
+                        curLine = testLine;
+                    }
+                }
+                if (curLine) {
+                    lines.push(curLine);
+                }
+            }
+        } else {
+            lines = rawLines;
+        }
+        if (lines.length === 0) lines = [''];
+
         const totalHeight = lines.length * lineHeight;
         const startY = (effVAlign === 'top') ? y : ((effVAlign === 'bottom') ? (y - totalHeight + lineHeight) : (y - (totalHeight - lineHeight) / 2));
 
@@ -3153,8 +3183,8 @@ class RpaCompositor {
         const subtype = clip.subtype || '';
         const text = clip.text !== undefined ? clip.text : '';
 
-        // Dynamic scale factor for font metrics
-        const bScale = 1.0;
+        // Dynamic scale factor for font metrics & shapes
+        const bScale = Math.max(0.2, (clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0)));
 
         // Font-targeted transition evaluation (Strobe, Flash, Glitch, Slide, Zoom, Wipe)
         const fontTrans = this.computeFontTransition(clip, relTime, duration);
@@ -3199,7 +3229,8 @@ class RpaCompositor {
             const bh = isDefaultFull ? 90 : drawH;
 
             const ac = getAlignedCoords(bx, by, bw, bh);
-            this.renderStyledText(this.ctx, displayText || 'Enter Text Here', ac.tx, ac.ty, clip, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration);
+            const maxW = Math.max(60, bw - 24 * bScale);
+            this.renderStyledText(this.ctx, displayText || 'Enter Text Here', ac.tx, ac.ty, clip, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
         } else if (title.includes('Title') || subtype === 'title') {
             const bx = isDefaultFull ? width * 0.1 : drawX;
             const by = isDefaultFull ? height * 0.12 : drawY;
@@ -3227,9 +3258,10 @@ class RpaCompositor {
             this.ctx.stroke();
 
             // Banner Title Text (with font-targeted transitions)
-            const fSize = Math.max(12, Math.round((clip.fontSize || Math.max(16, Math.min(42, Math.round(bh * 0.42))))));
+            const fSize = Math.max(12, Math.round((clip.fontSize || Math.max(16, Math.min(42, Math.round(bh * 0.42)))) * bScale));
             const ac = getAlignedCoords(bx, by, bw, bh);
-            this.renderStyledText(this.ctx, displayText || 'RPA AUTOMATION WORKFLOW', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: clip.color || '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration);
+            const maxW = Math.max(60, bw - 48 * bScale);
+            this.renderStyledText(this.ctx, displayText || 'RPA AUTOMATION WORKFLOW', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: clip.color || '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
         } else if (title.includes('Lower Third') || subtype === 'lower-third') {
             const bx = isDefaultFull ? width * 0.08 : drawX;
             const by = isDefaultFull ? height * 0.74 : drawY;
@@ -3250,12 +3282,13 @@ class RpaCompositor {
             this.ctx.fill();
 
             // Main Title
-            const titleSize = Math.max(12, Math.round((clip.fontSize || Math.max(14, Math.min(26, Math.round(bh * 0.32))))));
-            this.renderStyledText(this.ctx, displayText || 'RPA Video Editor Studio', bx + 24 * bScale, by + bh * 0.32, { ...clip, fontSize: titleSize, color: '#f8fafc' }, bScale, 'left', 'middle', fontTrans, relTime, duration);
+            const titleSize = Math.max(12, Math.round((clip.fontSize || Math.max(14, Math.min(26, Math.round(bh * 0.32)))) * bScale));
+            const maxW = Math.max(60, bw - 48 * bScale);
+            this.renderStyledText(this.ctx, displayText || 'RPA Video Editor Studio', bx + 24 * bScale, by + bh * 0.32, { ...clip, fontSize: titleSize, color: '#f8fafc' }, bScale, 'left', 'middle', fontTrans, relTime, duration, maxW);
 
             // Subtitle
-            const subSize = Math.max(10, Math.round((clip.subFontSize || Math.max(11, Math.min(16, Math.round(bh * 0.2))))));
-            this.renderStyledText(this.ctx, clip.subText || 'Automated Screen Recording & Editing', bx + 24 * bScale, by + bh * 0.68, { ...clip, fontSize: subSize, color: '#38bdf8' }, bScale, 'left', 'middle', fontTrans, relTime, duration);
+            const subSize = Math.max(10, Math.round((clip.subFontSize || Math.max(11, Math.min(16, Math.round(bh * 0.2)))) * bScale));
+            this.renderStyledText(this.ctx, clip.subText || 'Automated Screen Recording & Editing', bx + 24 * bScale, by + bh * 0.68, { ...clip, fontSize: subSize, color: '#38bdf8' }, bScale, 'left', 'middle', fontTrans, relTime, duration, maxW);
         } else if (title.includes('Thought') || subtype === 'thought') {
             const bx = isDefaultFull ? width * 0.28 : drawX;
             const by = isDefaultFull ? height * 0.18 : drawY;
@@ -3288,9 +3321,10 @@ class RpaCompositor {
             }
 
             // Cloud text
-            const fSize = Math.max(10, Math.round((clip.fontSize || Math.max(12, Math.min(22, Math.round(bh * 0.24))))));
+            const fSize = Math.max(10, Math.round((clip.fontSize || Math.max(12, Math.min(22, Math.round(bh * 0.24)))) * bScale));
             const ac = getAlignedCoords(bx, by, bw, bh);
-            this.renderStyledText(this.ctx, displayText || 'Thinking of next step...', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration);
+            const maxW = Math.max(60, bw - 48 * bScale);
+            this.renderStyledText(this.ctx, displayText || 'Thinking of next step...', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
         } else if (title.includes('Speech Bubble') || subtype === 'speech') {
             const bx = isDefaultFull ? width * 0.3 : drawX;
             const by = isDefaultFull ? height * 0.2 : drawY;
@@ -3314,9 +3348,10 @@ class RpaCompositor {
             this.ctx.fillStyle = bubbleColor;
             this.ctx.fill();
 
-            const fSize = Math.max(10, Math.round((clip.fontSize || Math.max(12, Math.min(20, Math.round(bh * 0.25))))));
+            const fSize = Math.max(10, Math.round((clip.fontSize || Math.max(12, Math.min(20, Math.round(bh * 0.25)))) * bScale));
             const ac = getAlignedCoords(bx, by, bw, bh);
-            this.renderStyledText(this.ctx, displayText || 'Important Step Here!', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration);
+            const maxW = Math.max(60, bw - 40 * bScale);
+            this.renderStyledText(this.ctx, displayText || 'Important Step Here!', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
         } else if (title.includes('Spotlight') || subtype === 'spotlight') {
             // Cutout spotlight: dim full canvas with dark overlay, then punch clear circular hole
             const cx = isDefaultFull ? width * 0.5 : (drawX + drawW / 2);
@@ -3361,9 +3396,10 @@ class RpaCompositor {
             this.ctx.restore();
 
             if (displayText) {
-                const fSize = Math.max(12, Math.round((clip.fontSize || Math.max(14, Math.round(bh * 0.42)))));
+                const fSize = Math.max(12, Math.round((clip.fontSize || Math.max(14, Math.round(bh * 0.42))) * bScale));
                 const ac = getAlignedCoords(bx, by, bw, bh);
-                this.renderStyledText(this.ctx, displayText, ac.tx, ac.ty, { ...clip, fontSize: fSize }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration);
+                const maxW = Math.max(60, bw - 24 * bScale);
+                this.renderStyledText(this.ctx, displayText, ac.tx, ac.ty, { ...clip, fontSize: fSize }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
             }
         } else if (title.includes('Double Arrow') || subtype === 'double-arrow') {
             const bx = isDefaultFull ? width * 0.3 : drawX;
@@ -3530,8 +3566,9 @@ class RpaCompositor {
             this.ctx.lineWidth = 1.5;
             this.ctx.stroke();
 
-            const fSize = Math.max(10, Math.round((clip.fontSize || 22)));
-            this.renderStyledText(this.ctx, displayText || '••••••••••••••', bx + bw / 2, by + bh / 2, { ...clip, fontSize: fSize, color: '#94a3b8', fontFamily: 'monospace' }, bScale, 'center', 'middle', fontTrans);
+            const fSize = Math.max(10, Math.round((clip.fontSize || 22) * bScale));
+            const maxW = Math.max(60, bw - 20 * bScale);
+            this.renderStyledText(this.ctx, displayText || '••••••••••••••', bx + bw / 2, by + bh / 2, { ...clip, fontSize: fSize, color: '#94a3b8', fontFamily: 'monospace' }, bScale, 'center', 'middle', fontTrans, relTime, duration, maxW);
         } else if (title.includes('Highlight') || title.includes('Rectangle') || subtype === 'rectangle') {
             const bx = isDefaultFull ? width * 0.25 : drawX;
             const by = isDefaultFull ? height * 0.3 : drawY;
@@ -3587,9 +3624,10 @@ class RpaCompositor {
             this.ctx.stroke();
 
             // Keycap Text (with font-targeted transitions)
-            const fSize = Math.max(10, Math.round((clip.fontSize || Math.max(12, Math.min(24, Math.round(bh * 0.42))))));
+            const fSize = Math.max(10, Math.round((clip.fontSize || Math.max(12, Math.min(24, Math.round(bh * 0.42)))) * bScale));
             const ac = getAlignedCoords(bx, by, bw, bh);
-            this.renderStyledText(this.ctx, displayText || 'Ctrl + C', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#f4f4f5', fontFamily: 'monospace' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration);
+            const maxW = Math.max(60, bw - 20 * bScale);
+            this.renderStyledText(this.ctx, displayText || 'Ctrl + C', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#f4f4f5', fontFamily: 'monospace' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
         } else {
             // Generic Callout fallback (with font-targeted transitions)
             this.ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
@@ -3599,9 +3637,10 @@ class RpaCompositor {
             this.ctx.lineWidth = 2;
             this.ctx.stroke();
 
-            const fSize = Math.max(10, Math.round((clip.fontSize || 20)));
+            const fSize = Math.max(10, Math.round((clip.fontSize || 20) * bScale));
             const ac = getAlignedCoords(bx, by, bw, bh);
-            this.renderStyledText(this.ctx, displayText || title, ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration);
+            const maxW = Math.max(60, bw - 24 * bScale);
+            this.renderStyledText(this.ctx, displayText || title, ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
         }
         this.ctx.restore();
     }
@@ -3720,27 +3759,26 @@ class RpaCompositor {
 
     getClipCanvasBounds(clip) {
         const { width, height } = this.canvas;
-        let scaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
-        let scaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
-        let xOff = clip.xOffset || 0;
-        let yOff = clip.yOffset || 0;
+        const scaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
+        const scaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
+        const xOff = clip.xOffset || 0;
+        const yOff = clip.yOffset || 0;
 
-        if (clip.type === 'callout' && clip.scaleX === undefined && clip.scale === undefined) {
-            const title = (clip.title || '').toLowerCase();
-            const subtype = (clip.subtype || '').toLowerCase();
-            if (title.includes('title') || subtype === 'title') { scaleX = 0.8; scaleY = 0.12; yOff = clip.yOffset !== undefined ? clip.yOffset : -380; }
-            else if (title.includes('lower third') || subtype === 'lower-third') { scaleX = 0.55; scaleY = 0.12; xOff = clip.xOffset !== undefined ? clip.xOffset : -360; yOff = clip.yOffset !== undefined ? clip.yOffset : 380; }
-            else if (title.includes('bubble') || subtype === 'speech' || subtype === 'thought') { scaleX = 0.32; scaleY = 0.14; xOff = clip.xOffset !== undefined ? clip.xOffset : -220; yOff = clip.yOffset !== undefined ? clip.yOffset : -180; }
-            else if (title.includes('double arrow') || subtype === 'double-arrow') { scaleX = 0.35; scaleY = 0.08; }
-            else if (title.includes('arrow') || subtype === 'arrow') { scaleX = 0.28; scaleY = 0.08; }
-            else if (title.includes('highlight') || subtype === 'highlight') { scaleX = 0.35; scaleY = 0.08; }
-            else if (title.includes('rectangle') || subtype === 'rectangle') { scaleX = 0.38; scaleY = 0.26; }
-            else if (title.includes('circle') || subtype === 'circle') { scaleX = 0.22; scaleY = 0.22; }
-            else if (title.includes('spotlight') || subtype === 'spotlight') { scaleX = 0.35; scaleY = 0.35; }
-            else if (title.includes('blur') || subtype === 'blur') { scaleX = 0.28; scaleY = 0.09; }
-            else if (title.includes('censor') || title.includes('pixelate') || subtype === 'pixelate') { scaleX = 0.28; scaleY = 0.09; }
-            else if (title.includes('keystroke') || subtype === 'keystroke') { scaleX = 0.20; scaleY = 0.08; yOff = clip.yOffset !== undefined ? clip.yOffset : 380; }
-            else { scaleX = 0.35; scaleY = 0.15; }
+        if (clip.type === 'callout') {
+            const b = this.getCalloutBounds(clip, width, height);
+            const w = Math.max(20, b.bw * scaleX);
+            const h = Math.max(20, b.bh * scaleY);
+            const x = b.bx + (b.bw - w) / 2;
+            const y = b.by + (b.bh - h) / 2;
+            return {
+                x,
+                y,
+                width: w,
+                height: h,
+                cx: x + w / 2,
+                cy: y + h / 2,
+                rotation: clip.rotation || 0
+            };
         }
 
         const w = width * scaleX;

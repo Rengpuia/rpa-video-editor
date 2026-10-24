@@ -83,7 +83,7 @@ class RpaStudioApp {
             });
         }
         window.addEventListener('beforeunload', (e) => {
-            if (this.isDirty) {
+            if (!window.rpaNative && this.isDirty) {
                 e.preventDefault();
                 e.returnValue = '';
             }
@@ -2992,9 +2992,6 @@ class RpaStudioApp {
             duration: 4.5,
             text: 'RPA VIDEO EDITOR STUDIO PRO'
         });
-
-        this.timeline.addCaption(0.5, 4.0, 'Welcome to RPA Video Editor Pro');
-        this.timeline.addCaption(5.0, 4.5, 'Multi-layer timeline with Studio motion features');
 
         this.timeline.addMarker(0.0, 'Intro');
         this.timeline.addMarker(5.0, 'Step 1: Capture');
@@ -6678,7 +6675,9 @@ class RpaStudioApp {
                             startClipState = {
                                 scale: selClip.scale || 1.0,
                                 scaleX: selClip.scaleX !== undefined ? selClip.scaleX : (selClip.scale || 1.0),
-                                scaleY: selClip.scaleY !== undefined ? selClip.scaleY : (selClip.scale || 1.0)
+                                scaleY: selClip.scaleY !== undefined ? selClip.scaleY : (selClip.scale || 1.0),
+                                xOffset: selClip.xOffset || 0,
+                                yOffset: selClip.yOffset || 0
                             };
                             startClipBounds = b;
                             return;
@@ -6838,22 +6837,49 @@ class RpaStudioApp {
                 const b = startClipBounds;
                 const hw = b.width / 2;
                 const hh = b.height / 2;
+                const rotRad = (b.rotation || 0) * Math.PI / 180;
+                const cosR = Math.cos(rotRad);
+                const sinR = Math.sin(rotRad);
+                const localDeltaX = deltaX * cosR + deltaY * sinR;
+                const localDeltaY = -deltaX * sinR + deltaY * cosR;
+
                 const signX = resizeHandle.includes('e') ? 1 : (resizeHandle.includes('w') ? -1 : 0);
                 const signY = resizeHandle.includes('s') ? 1 : (resizeHandle.includes('n') ? -1 : 0);
+                const isCorner = (signX !== 0 && signY !== 0);
 
-                let factorX = signX !== 0 ? (hw + deltaX * signX) / hw : 1.0;
-                let factorY = signY !== 0 ? (hh + deltaY * signY) / hh : 1.0;
+                const newW = Math.max(20, b.width + localDeltaX * signX);
+                const newH = Math.max(20, b.height + localDeltaY * signY);
+                const factorX = signX !== 0 ? (newW / b.width) : 1.0;
+                const factorY = signY !== 0 ? (newH / b.height) : 1.0;
 
-                const lockAspect = document.getElementById('chkLockAspect')?.checked ?? true;
-                if (lockAspect) {
-                    const factor = Math.max(0.1, (factorX + factorY) / (signX && signY ? 2 : 1));
-                    selClip.scale = Math.max(0.1, Math.min(3.0, startClipState.scale * factor));
-                    selClip.scaleX = selClip.scale;
-                    selClip.scaleY = selClip.scale;
+                const lockAspect = document.getElementById('chkLockAspect')?.checked ?? (selClip.type !== 'callout');
+                let shiftLocalX = 0;
+                let shiftLocalY = 0;
+
+                if (isCorner && lockAspect) {
+                    const factor = Math.max(0.05, (factorX + factorY) / 2);
+                    selClip.scaleX = Math.max(0.05, Math.min(5.0, startClipState.scaleX * factor));
+                    selClip.scaleY = Math.max(0.05, Math.min(5.0, startClipState.scaleY * factor));
+                    selClip.scale = Math.max(0.05, Math.min(5.0, startClipState.scale * factor));
+                    shiftLocalX = signX * (b.width * factor - b.width) / 2;
+                    shiftLocalY = signY * (b.height * factor - b.height) / 2;
                 } else {
-                    if (signX !== 0) selClip.scaleX = Math.max(0.1, Math.min(3.0, startClipState.scaleX * factorX));
-                    if (signY !== 0) selClip.scaleY = Math.max(0.1, Math.min(3.0, startClipState.scaleY * factorY));
+                    if (signX !== 0) {
+                        selClip.scaleX = Math.max(0.05, Math.min(5.0, startClipState.scaleX * factorX));
+                        shiftLocalX = signX * (newW - b.width) / 2;
+                    }
+                    if (signY !== 0) {
+                        selClip.scaleY = Math.max(0.05, Math.min(5.0, startClipState.scaleY * factorY));
+                        shiftLocalY = signY * (newH - b.height) / 2;
+                    }
+                    selClip.scale = (selClip.scaleX + selClip.scaleY) / 2;
                 }
+
+                // Anchor opposite edge / corner during handle dragging
+                const deltaCanvasX = shiftLocalX * cosR - shiftLocalY * sinR;
+                const deltaCanvasY = shiftLocalX * sinR + shiftLocalY * cosR;
+                selClip.xOffset = Math.round(startClipState.xOffset + deltaCanvasX);
+                selClip.yOffset = Math.round(startClipState.yOffset + deltaCanvasY);
 
                 // Sync Inspector property sliders
                 const sPct = Math.round((selClip.scale || 1.0) * 100);
@@ -6865,12 +6891,16 @@ class RpaStudioApp {
                 const lScale = document.getElementById('lblScaleUniform');
                 const lScaleX = document.getElementById('lblScaleX');
                 const lScaleY = document.getElementById('lblScaleY');
+                const pX = document.getElementById('propXOffset');
+                const pY = document.getElementById('propYOffset');
                 if (pScale) pScale.value = sPct;
                 if (pScaleX) pScaleX.value = sxPct;
                 if (pScaleY) pScaleY.value = syPct;
                 if (lScale) lScale.innerText = `${sPct}%`;
                 if (lScaleX) lScaleX.innerText = `${sxPct}%`;
                 if (lScaleY) lScaleY.innerText = `${syPct}%`;
+                if (pX) pX.value = selClip.xOffset;
+                if (pY) pY.value = selClip.yOffset;
 
                 this.compositor.renderFrame(this.timeline, this.playheadTime);
             }
@@ -6878,20 +6908,11 @@ class RpaStudioApp {
 
         const onPointerUp = () => {
             if (isInteracting) {
-                const wasTranslating = interactionMode === 'translate';
                 isInteracting = false;
                 interactionMode = null;
                 canvas.style.cursor = this.compositor.activeCanvasTool === 'hand' ? 'grab' : (this.compositor.activeCanvasTool === 'crop' ? 'crosshair' : 'default');
                 this.timeline.saveSnapshot();
                 this.markDirty(true);
-
-                // If user clicked without dragging, make annotation text editable directly in the main player
-                if (!hasMoved && wasTranslating && this.timeline.selectedClipId) {
-                    const selClip = this.timeline.getClip(this.timeline.selectedClipId);
-                    if (selClip && selClip.type === 'callout') {
-                        this.openCanvasInlineEditor(selClip);
-                    }
-                }
             }
         };
 

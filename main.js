@@ -102,7 +102,7 @@ ipcMain.on('app:save-completed', (event, proceedToClose) => {
     isProjectDirty = false;
     if (proceedToClose && mainWindow) {
         isQuittingForced = true;
-        mainWindow.close();
+        mainWindow.destroy();
     }
 });
 
@@ -184,7 +184,8 @@ async function createWindow() {
                 mainWindow.webContents.send('app:prompt-save-before-close');
             } else if (choice === 1) { // Don't Save
                 isQuittingForced = true;
-                mainWindow.close();
+                isProjectDirty = false;
+                mainWindow.destroy();
             }
             // If Cancel (choice === 2), event was prevented so stays open!
         }
