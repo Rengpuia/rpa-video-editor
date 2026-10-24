@@ -21,12 +21,12 @@ class RpaTimeline {
         this.selectionEnd = null;
         this.snappingEnabled = true;
 
-        // Dynamic Unlimited Multi-Layer Tracks
+        // Dynamic Unlimited Multi-Layer Universal Tracks
         this.tracks = [
-            { id: 4, name: 'Track 4 (Overlays)', type: 'overlay', visible: true, locked: false, muted: false },
-            { id: 3, name: 'Track 3 (Subtitles)', type: 'caption', visible: true, locked: false, muted: false },
-            { id: 2, name: 'Track 2 (Video)', type: 'video', visible: true, locked: false, muted: false },
-            { id: 1, name: 'Track 1 (Audio)', type: 'audio', visible: true, locked: false, muted: false }
+            { id: 4, name: 'Track 4', type: 'any', visible: true, locked: false, muted: false },
+            { id: 3, name: 'Track 3', type: 'any', visible: true, locked: false, muted: false },
+            { id: 2, name: 'Track 2', type: 'any', visible: true, locked: false, muted: false },
+            { id: 1, name: 'Track 1', type: 'any', visible: true, locked: false, muted: false }
         ];
 
         // Robust Undo / Redo History Stack
@@ -115,7 +115,7 @@ class RpaTimeline {
         const nextId = this.tracks.length > 0 ? Math.max(...this.tracks.map(t => t.id)) + 1 : 1;
         const track = {
             id: nextId,
-            name: name || `Track ${nextId} (${type.toUpperCase()})`,
+            name: name || `Track ${nextId}`,
             type,
             visible: true,
             locked: false,
@@ -188,6 +188,8 @@ class RpaTimeline {
             // Freeform / Changeable Aspect Ratio
             scaleX: clipData.scaleX !== undefined ? clipData.scaleX : (clipData.scale || 1.0),
             scaleY: clipData.scaleY !== undefined ? clipData.scaleY : (clipData.scale || 1.0),
+            naturalWidth: clipData.naturalWidth || null,
+            naturalHeight: clipData.naturalHeight || null,
             aspectRatioLocked: clipData.aspectRatioLocked !== undefined ? clipData.aspectRatioLocked : true,
             aspectRatioPreset: clipData.aspectRatioPreset || '16:9',
 
@@ -1149,6 +1151,16 @@ class RpaTimeline {
                         }
                     }
 
+                    let dragRenderRaf = null;
+                    const scheduleRender = () => {
+                        if (!dragRenderRaf && window.rpaStudio) {
+                            dragRenderRaf = requestAnimationFrame(() => {
+                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                dragRenderRaf = null;
+                            });
+                        }
+                    };
+
                     const onClipMove = (moveEvent) => {
                         const deltaSec = (moveEvent.clientX - startX) / this.pixelsPerSecond;
 
@@ -1163,7 +1175,7 @@ class RpaTimeline {
                                 if (rng) rng.value = Math.round(clip.transitionInDuration * 10);
                                 const lbl = document.getElementById('lblTransitionDur');
                                 if (lbl) lbl.innerText = `${clip.transitionInDuration.toFixed(1)}s`;
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                             return;
                         }
@@ -1179,7 +1191,7 @@ class RpaTimeline {
                                 if (rng) rng.value = Math.round(clip.transitionOutDuration * 10);
                                 const lbl = document.getElementById('lblTransitionDur');
                                 if (lbl) lbl.innerText = `${clip.transitionOutDuration.toFixed(1)}s`;
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                             return;
                         }
@@ -1191,7 +1203,7 @@ class RpaTimeline {
                             if (wedgeEl) wedgeEl.style.left = `${targetIntermediateTrans.timeOffset * this.pixelsPerSecond}px`;
                             if (window.rpaStudio) {
                                 window.rpaStudio.renderProperties(clip);
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                             return;
                         }
@@ -1207,7 +1219,7 @@ class RpaTimeline {
                             }
                             if (window.rpaStudio) {
                                 window.rpaStudio.renderProperties(clip);
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                             return;
                         }
@@ -1225,7 +1237,7 @@ class RpaTimeline {
                             }
                             const arrowEl = clipEl.querySelector(`.studio-timeline-arrow[data-anim-id="${targetAnim.id}"]`);
                             if (arrowEl) arrowEl.style.left = `${targetAnim.timeOffset * this.pixelsPerSecond}px`;
-                            if (window.rpaStudio) window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                            if (window.rpaStudio) scheduleRender();
                             return;
                         }
 
@@ -1244,7 +1256,7 @@ class RpaTimeline {
                             if (window.rpaStudio) {
                                 const lblDur = document.getElementById('lblAnimDurationInspector');
                                 if (lblDur) lblDur.innerText = `${targetAnim.duration.toFixed(1)}s`;
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                             return;
                         }
@@ -1269,7 +1281,7 @@ class RpaTimeline {
                             if (window.rpaStudio) {
                                 const lblDur = document.getElementById('lblAnimDurationInspector');
                                 if (lblDur) lblDur.innerText = `${targetAnim.duration.toFixed(1)}s`;
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                             return;
                         }
@@ -1278,7 +1290,7 @@ class RpaTimeline {
                             targetKf.timeOffset = Math.max(0, Math.min(clip.duration, parseFloat((origKfOffset + deltaSec).toFixed(2))));
                             targetEl.style.left = `${targetKf.timeOffset * this.pixelsPerSecond}px`;
                             if (window.rpaStudio) {
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                             return;
                         }
@@ -1313,7 +1325,7 @@ class RpaTimeline {
                                 if (pStart) pStart.value = clip.startTime.toFixed(1);
                                 const pDur = document.getElementById('propDuration');
                                 if (pDur) pDur.value = clip.duration.toFixed(1);
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                         } else if (action === 'trim-right') {
                             let candidateEnd = origStart + origDur + deltaSec;
@@ -1326,7 +1338,7 @@ class RpaTimeline {
                             if (window.rpaStudio) {
                                 const pDur = document.getElementById('propDuration');
                                 if (pDur) pDur.value = clip.duration.toFixed(1);
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                         } else {
                             let candidateStart = Math.max(0, origStart + deltaSec);
@@ -1344,7 +1356,7 @@ class RpaTimeline {
                             if (window.rpaStudio) {
                                 const pStart = document.getElementById('propStart');
                                 if (pStart) pStart.value = clip.startTime.toFixed(1);
-                                window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                scheduleRender();
                             }
                         }
 
@@ -1358,11 +1370,13 @@ class RpaTimeline {
                     };
 
                     const onClipEnd = () => {
+                        if (dragRenderRaf) {
+                            cancelAnimationFrame(dragRenderRaf);
+                            dragRenderRaf = null;
+                        }
                         if (targetEl && targetEl.classList) targetEl.classList.remove('dragging');
                         window.removeEventListener('pointermove', onClipMove);
                         window.removeEventListener('pointerup', onClipEnd);
-                        window.removeEventListener('mousemove', onClipMove);
-                        window.removeEventListener('mouseup', onClipEnd);
                         if (origTrackId !== clip.trackId) {
                             this.resolveTrackOverlaps(origTrackId);
                         }
@@ -1378,8 +1392,6 @@ class RpaTimeline {
 
                     window.addEventListener('pointermove', onClipMove);
                     window.addEventListener('pointerup', onClipEnd);
-                    window.addEventListener('mousemove', onClipMove);
-                    window.addEventListener('mouseup', onClipEnd);
                 };
 
                 clipEl.onpointerdown = onClipDragStart;

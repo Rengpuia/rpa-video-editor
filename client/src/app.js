@@ -3634,6 +3634,61 @@ class RpaStudioApp {
         }
     }
 
+    generateVideoThumbnail(videoUrl) {
+        return new Promise((resolve) => {
+            const vid = document.createElement('video');
+            vid.crossOrigin = 'anonymous';
+            vid.muted = true;
+            vid.preload = 'metadata';
+            vid.src = videoUrl;
+            let resolved = false;
+
+            const cleanup = () => {
+                vid.removeAttribute('src');
+                vid.load();
+            };
+
+            const captureFrame = () => {
+                if (resolved) return;
+                resolved = true;
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 160;
+                    canvas.height = 90;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+                    const thumbDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    cleanup();
+                    resolve(thumbDataUrl);
+                } catch (err) {
+                    cleanup();
+                    resolve(null);
+                }
+            };
+
+            vid.onloadedmetadata = () => {
+                const seekTime = Math.min(0.5, (vid.duration || 1) / 2);
+                vid.currentTime = seekTime;
+            };
+            vid.onseeked = () => {
+                captureFrame();
+            };
+            vid.onerror = () => {
+                if (!resolved) {
+                    resolved = true;
+                    cleanup();
+                    resolve(null);
+                }
+            };
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    captureFrame();
+                }
+            }, 3000);
+        });
+    }
+
     async stopRecording() {
         const recordBtn = document.getElementById('btnOpenRecordModal');
         recordBtn.innerText = '⏺ Record';
@@ -3644,10 +3699,11 @@ class RpaStudioApp {
 
         const dur = Math.max(1.0, result.duration);
         const clipTitle = `Capture_${new Date().toLocaleTimeString().replace(/:/g, '-')}.webm`;
+        const targetTrackId = this.timeline.tracks.length > 0 ? this.timeline.tracks[0].id : 2;
         const added = this.timeline.addClip({
             title: clipTitle,
             type: 'video',
-            trackId: 2,
+            trackId: targetTrackId,
             startTime: this.playheadTime,
             duration: dur,
             sourceUrl: result.videoUrl,
@@ -3655,10 +3711,12 @@ class RpaStudioApp {
         });
         if (added) {
             this.playheadTime = added.startTime + added.duration;
+            this.timeline.selectedClipId = added.id;
+            this.renderProperties(added);
         }
 
         // Add to Media Bin & Captures
-        this.addMediaToBin({
+        const binItem = {
             id: `rec_${Date.now()}`,
             name: clipTitle,
             type: 'video',
@@ -3666,10 +3724,18 @@ class RpaStudioApp {
             url: result.videoUrl,
             telemetry: result.telemetry,
             sub: 'Recorded Screen / Webcam Capture'
+        };
+        this.generateVideoThumbnail(result.videoUrl).then(thumbUrl => {
+            if (thumbUrl) {
+                binItem.thumbnailUrl = thumbUrl;
+                this.renderMediaBin();
+            }
         });
+        this.addMediaToBin(binItem);
 
         this.renderTimeline();
         this.updateTimelineRuler();
+        this.compositor.renderFrame(this.timeline, this.playheadTime);
         this.markDirty(true);
     }
 
@@ -3680,65 +3746,130 @@ class RpaStudioApp {
         for (const file of files) {
             const url = URL.createObjectURL(file);
             const isAudio = file.type.startsWith('audio');
-            const mediaType = isAudio ? 'audio' : 'video';
+            const isImage = file.type.startsWith('image') || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(file.name);
+            const mediaType = isImage ? 'image' : (isAudio ? 'audio' : 'video');
 
-            // Probe duration
-            const probe = document.createElement(isAudio ? 'audio' : 'video');
-            probe.preload = 'metadata';
-            probe.src = url;
-            probe.onloadedmetadata = () => {
-                const dur = (probe.duration && isFinite(probe.duration)) ? Math.max(1.0, parseFloat(probe.duration.toFixed(2))) : 10.0;
-                this.addMediaToBin({
-                    id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    name: file.name,
-                    type: mediaType,
-                    duration: dur,
-                    url: url,
-                    sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB • ${mediaType.toUpperCase()}`
-                });
+            if (isImage) {
+                const img = new Image();
+                img.onload = () => {
+                    const natW = img.naturalWidth || 1920;
+                    const natH = img.naturalHeight || 1080;
+                    const dur = 5.0; // Standard 5s still image duration
+                    const binItem = {
+                        id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                        name: file.name,
+                        type: 'image',
+                        duration: dur,
+                        url: url,
+                        thumbnailUrl: url,
+                        naturalWidth: natW,
+                        naturalHeight: natH,
+                        sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB • IMAGE (${natW}x${natH})`
+                    };
+                    this.addMediaToBin(binItem);
 
-                const addedClip = this.timeline.addClip({
-                    title: file.name,
-                    type: mediaType,
-                    trackId: isAudio ? 1 : 2,
-                    startTime: this.playheadTime,
-                    duration: dur,
-                    sourceUrl: url
-                });
-                if (addedClip) {
-                    this.playheadTime = addedClip.startTime + addedClip.duration;
-                }
+                    const targetTrackId = this.timeline.tracks.length > 0 ? this.timeline.tracks[0].id : 2;
+                    const addedClip = this.timeline.addClip({
+                        title: file.name,
+                        type: 'image',
+                        trackId: targetTrackId,
+                        startTime: this.playheadTime,
+                        duration: dur,
+                        sourceUrl: url,
+                        naturalWidth: natW,
+                        naturalHeight: natH
+                    });
+                    if (addedClip) {
+                        this.timeline.selectedClipId = addedClip.id;
+                        this.playheadTime = addedClip.startTime + addedClip.duration;
+                        this.renderProperties(addedClip);
+                    }
+                    this.renderTimeline();
+                    this.updateTimelineRuler();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    this.markDirty(true);
+                };
+                img.onerror = () => {
+                    const binItem = {
+                        id: `file_${Date.now()}`,
+                        name: file.name,
+                        type: 'image',
+                        duration: 5.0,
+                        url: url,
+                        thumbnailUrl: url,
+                        sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB • IMAGE`
+                    };
+                    this.addMediaToBin(binItem);
+                    const targetTrackId = this.timeline.tracks.length > 0 ? this.timeline.tracks[0].id : 2;
+                    const addedClip = this.timeline.addClip({
+                        title: file.name,
+                        type: 'image',
+                        trackId: targetTrackId,
+                        startTime: this.playheadTime,
+                        duration: 5.0,
+                        sourceUrl: url
+                    });
+                    if (addedClip) {
+                        this.timeline.selectedClipId = addedClip.id;
+                        this.playheadTime = addedClip.startTime + addedClip.duration;
+                        this.renderProperties(addedClip);
+                    }
+                    this.renderTimeline();
+                    this.updateTimelineRuler();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    this.markDirty(true);
+                };
+                img.src = url;
+            } else {
+                // Audio or Video
+                const probe = document.createElement(isAudio ? 'audio' : 'video');
+                probe.preload = 'metadata';
+                probe.src = url;
+                const onLoaded = () => {
+                    const dur = (probe.duration && isFinite(probe.duration)) ? Math.max(1.0, parseFloat(probe.duration.toFixed(2))) : 10.0;
+                    const binItem = {
+                        id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                        name: file.name,
+                        type: mediaType,
+                        duration: dur,
+                        url: url,
+                        sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB • ${mediaType.toUpperCase()}`
+                    };
 
-                this.renderTimeline();
-                this.updateTimelineRuler();
-                this.markDirty(true);
-            };
-            probe.onerror = () => {
-                this.addMediaToBin({
-                    id: `file_${Date.now()}`,
-                    name: file.name,
-                    type: mediaType,
-                    duration: 10.0,
-                    url: url,
-                    sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-                });
+                    if (mediaType === 'video') {
+                        this.generateVideoThumbnail(url).then(thumbUrl => {
+                            if (thumbUrl) {
+                                binItem.thumbnailUrl = thumbUrl;
+                                this.renderMediaBin();
+                            }
+                        });
+                    }
 
-                const addedClip = this.timeline.addClip({
-                    title: file.name,
-                    type: mediaType,
-                    trackId: isAudio ? 1 : 2,
-                    startTime: this.playheadTime,
-                    duration: 10.0,
-                    sourceUrl: url
-                });
-                if (addedClip) {
-                    this.playheadTime = addedClip.startTime + addedClip.duration;
-                }
+                    this.addMediaToBin(binItem);
 
-                this.renderTimeline();
-                this.updateTimelineRuler();
-                this.markDirty(true);
-            };
+                    const targetTrackId = isAudio ? 1 : (this.timeline.tracks.length > 0 ? this.timeline.tracks[0].id : 2);
+                    const addedClip = this.timeline.addClip({
+                        title: file.name,
+                        type: mediaType,
+                        trackId: targetTrackId,
+                        startTime: this.playheadTime,
+                        duration: dur,
+                        sourceUrl: url
+                    });
+                    if (addedClip) {
+                        this.timeline.selectedClipId = addedClip.id;
+                        this.playheadTime = addedClip.startTime + addedClip.duration;
+                        this.renderProperties(addedClip);
+                    }
+
+                    this.renderTimeline();
+                    this.updateTimelineRuler();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    this.markDirty(true);
+                };
+                probe.onloadedmetadata = onLoaded;
+                probe.onerror = onLoaded;
+            }
         }
         e.target.value = '';
     }
@@ -3759,7 +3890,7 @@ class RpaStudioApp {
             mediaList.innerHTML = `
                 <div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 24px 12px; border: 1px dashed var(--border-color); border-radius: 6px;">
                     <span style="font-size: 28px; display: block; margin-bottom: 6px;">📁</span>
-                    <span>Media Bin is empty.<br>Click <strong>+ Import Media</strong> or record screen to add clips.</span>
+                    <span>Media Bin is empty.<br>Click <strong>+ Import Media</strong> or record screen/webcam to add clips.</span>
                 </div>
             `;
             return;
@@ -3767,32 +3898,50 @@ class RpaStudioApp {
 
         for (const item of this.mediaBin) {
             const card = document.createElement('div');
-            card.className = 'studio-card asset-card';
+            card.className = 'studio-card asset-card media-bin-compact-card';
             card.draggable = true;
             card.dataset.toolType = 'media';
             card.dataset.toolName = item.name;
             card.dataset.mediaId = item.id;
 
-            const isVideo = item.type !== 'audio';
-            const icon = isVideo ? '🎬' : '🎵';
-            const durStr = item.duration ? `${item.duration.toFixed(1)}s` : '10.0s';
-            const badgeText = isVideo ? `${durStr} • 1080p` : `${durStr} • Audio`;
+            const isAudio = item.type === 'audio';
+            const isImage = item.type === 'image';
+            const durStr = item.duration ? `${item.duration.toFixed(1)}s` : (isImage ? '5.0s' : '10.0s');
+            const typeLabel = isImage ? 'IMAGE' : (isAudio ? 'AUDIO' : 'VIDEO');
+            const fallbackIcon = isImage ? '🖼️' : (isAudio ? '🎵' : '🎬');
+
+            let previewHtml = '';
+            if (item.thumbnailUrl) {
+                previewHtml = `
+                    <div class="media-bin-thumb-wrapper">
+                        <img src="${item.thumbnailUrl}" class="media-bin-thumb-img" alt="${item.name}" loading="lazy">
+                        <span class="media-bin-thumb-dur">${durStr}</span>
+                    </div>
+                `;
+            } else {
+                const grad = isImage
+                    ? 'linear-gradient(135deg, #4c1d95, #2e1065)'
+                    : (isAudio ? 'linear-gradient(135deg, #064e3b, #022c22)' : 'linear-gradient(135deg, #1e293b, #0f172a)');
+                previewHtml = `
+                    <div class="media-bin-thumb-wrapper" style="background: ${grad}; display: flex; align-items: center; justify-content: center;">
+                        <span style="font-size: 18px;">${fallbackIcon}</span>
+                        <span class="media-bin-thumb-dur">${durStr}</span>
+                    </div>
+                `;
+            }
 
             card.innerHTML = `
-                <div class="studio-card-preview" style="background: linear-gradient(135deg, ${isVideo ? '#1e293b, #0f172a' : '#064e3b, #022c22'});">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-                        <span style="font-size: 24px;">${icon}</span>
-                        <span style="font-size: 9.5px; font-weight: 700; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 1px 6px; border-radius: 3px;">${badgeText}</span>
+                ${previewHtml}
+                <div class="media-bin-card-details">
+                    <div class="media-bin-card-title" title="${item.name}">${item.name}</div>
+                    <div class="media-bin-card-meta">
+                        <span class="media-bin-type-badge badge-${item.type || 'video'}">${typeLabel}</span>
+                        <span class="media-bin-sub-text">${item.sub || ''}</span>
                     </div>
                 </div>
-                <div class="studio-card-info">
-                    <div class="studio-card-title" title="${item.name}">${item.name}</div>
-                    <div class="studio-card-desc">${item.sub || (isVideo ? 'Video Media Asset' : 'Audio Track Asset')}</div>
-                    <span class="studio-card-badge">${isVideo ? 'VIDEO CLIP' : 'AUDIO TRACK'}</span>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
-                    <div class="studio-card-apply-badge" data-action="add-to-timeline" title="Add to timeline at playhead">+ Add</div>
-                    <button type="button" class="btn-bin-del" data-action="del-bin-item" style="background: transparent; border: none; color: #ef4444; font-size: 11px; cursor: pointer; padding: 2px 4px;" title="Remove from Bin">🗑️</button>
+                <div class="media-bin-card-actions">
+                    <button type="button" class="media-bin-action-add" data-action="add-to-timeline" title="Add to timeline at playhead">+ Add</button>
+                    <button type="button" class="media-bin-action-del" data-action="del-bin-item" title="Remove from Bin">🗑️</button>
                 </div>
             `;
 
@@ -3802,8 +3951,10 @@ class RpaStudioApp {
                     toolName: item.name,
                     mediaId: item.id,
                     url: item.url,
-                    duration: item.duration || 10.0,
-                    mediaType: item.type || 'video'
+                    duration: item.duration || (isImage ? 5.0 : 10.0),
+                    mediaType: item.type || (isImage ? 'image' : (isAudio ? 'audio' : 'video')),
+                    naturalWidth: item.naturalWidth || null,
+                    naturalHeight: item.naturalHeight || null
                 };
                 e.dataTransfer.setData('text/plain', JSON.stringify(data));
                 e.dataTransfer.effectAllowed = 'copy';
@@ -3826,15 +3977,31 @@ class RpaStudioApp {
     }
 
     addMediaClipToTimeline(item) {
-        const isAudio = item.type === 'audio';
+        let clipType = 'video';
+        if (item.type === 'image') clipType = 'image';
+        else if (item.type === 'audio') clipType = 'audio';
+
+        // Universal track selection: use active track or track 2 (track 1 for audio)
+        let targetTrackId = 2;
+        if (clipType === 'audio') {
+            targetTrackId = 1;
+        } else if (this.timeline.selectedClipId) {
+            const sel = this.timeline.getClip(this.timeline.selectedClipId);
+            if (sel) targetTrackId = sel.trackId;
+        } else if (this.timeline.tracks.length > 0) {
+            targetTrackId = this.timeline.tracks[0].id;
+        }
+
         const newClip = {
             title: item.name,
-            type: isAudio ? 'audio' : 'video',
-            trackId: isAudio ? 1 : 2,
+            type: clipType,
+            trackId: targetTrackId,
             startTime: this.playheadTime,
-            duration: item.duration || 10.0,
+            duration: item.duration || (clipType === 'image' ? 5.0 : 10.0),
             sourceUrl: item.url || '',
             telemetry: item.telemetry || null,
+            naturalWidth: item.naturalWidth || null,
+            naturalHeight: item.naturalHeight || null,
             scale: 1.0,
             scaleX: 1.0,
             scaleY: 1.0,
@@ -5347,15 +5514,22 @@ class RpaStudioApp {
                 alert('Please import media into the Media Bin first.');
                 return;
             }
-            const isAudio = (data.mediaType === 'audio') || (mediaItem && mediaItem.type === 'audio');
+            let mediaType = data.mediaType || mediaItem?.type || 'video';
+            if (mediaType !== 'image' && mediaType !== 'audio' && mediaType !== 'video') {
+                if (/\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(data.toolName || '')) mediaType = 'image';
+                else if (/\.(mp3|wav|ogg|aac|m4a|flac)$/i.test(data.toolName || '')) mediaType = 'audio';
+                else mediaType = 'video';
+            }
             const added = this.timeline.addClip({
                 title: data.toolName || (mediaItem ? mediaItem.name : 'Media Clip'),
-                type: isAudio ? 'audio' : 'video',
+                type: mediaType,
                 trackId,
                 startTime: dropTime,
-                duration: data.duration || mediaItem?.duration || 10.0,
+                duration: data.duration || mediaItem?.duration || (mediaType === 'image' ? 5.0 : 10.0),
                 sourceUrl: data.url || mediaItem?.url || '',
                 telemetry: mediaItem?.telemetry || null,
+                naturalWidth: data.naturalWidth || mediaItem?.naturalWidth || null,
+                naturalHeight: data.naturalHeight || mediaItem?.naturalHeight || null,
                 scale: 1.0,
                 scaleX: 1.0,
                 scaleY: 1.0,

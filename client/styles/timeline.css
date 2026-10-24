@@ -326,6 +326,7 @@
 }
 
 .clip-video { background: linear-gradient(135deg, #1d4ed8, #2563eb); }
+.clip-image { background: linear-gradient(135deg, #7c3aed, #8b5cf6); }
 .clip-audio { background: linear-gradient(135deg, #047857, #059669); }
 .clip-callout { background: linear-gradient(135deg, #b45309, #d97706); }
 

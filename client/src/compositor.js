@@ -230,6 +230,22 @@ class RpaCompositor {
         return this.videoElements.get(sourceUrl);
     }
 
+    getImageElement(sourceUrl) {
+        if (!this.imageElements) this.imageElements = new Map();
+        if (!this.imageElements.has(sourceUrl)) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = sourceUrl;
+            img.onload = () => {
+                if (window.rpaStudio && !window.rpaStudio.isPlaying) {
+                    window.rpaStudio.compositor.renderFrame(window.rpaStudio.timeline, window.rpaStudio.playheadTime);
+                }
+            };
+            this.imageElements.set(sourceUrl, img);
+        }
+        return this.imageElements.get(sourceUrl);
+    }
+
     getAudioElement(sourceUrl) {
         if (!this.audioElements.has(sourceUrl)) {
             const a = new Audio();
@@ -246,6 +262,7 @@ class RpaCompositor {
     syncMediaPlayback(timeline, time, isPlaying) {
         const activeClips = timeline.clips.filter(c => time >= c.startTime && time <= (c.startTime + c.duration));
         const activeUrls = new Set();
+        const driftThreshold = isPlaying ? 0.45 : 0.08;
 
         for (const clip of activeClips) {
             const track = timeline.getTrack(clip.trackId);
@@ -263,7 +280,7 @@ class RpaCompositor {
                 if (v.playbackRate !== clipSpeed) {
                     try { v.playbackRate = clipSpeed; } catch (_) {}
                 }
-                if (Math.abs(v.currentTime - targetMediaTime) > 0.15) {
+                if (Math.abs(v.currentTime - targetMediaTime) > driftThreshold) {
                     v.currentTime = targetMediaTime;
                 }
                 if (isPlaying) {
@@ -288,7 +305,7 @@ class RpaCompositor {
                     try { a.playbackRate = clipSpeed; } catch (_) {}
                 }
 
-                if (Math.abs(a.currentTime - targetMediaTime) > 0.15) {
+                if (Math.abs(a.currentTime - targetMediaTime) > driftThreshold) {
                     a.currentTime = targetMediaTime;
                 }
                 if (isPlaying) {
@@ -464,6 +481,47 @@ class RpaCompositor {
                 drawH = b.bh * sY;
                 drawX = b.bx + (b.bw - drawW) / 2 + (behaviorTransform.x || 0) + (transitionTransform.x || 0) + kf.x;
                 drawY = b.by + (b.bh - drawH) / 2 + (behaviorTransform.y || 0) + (transitionTransform.y || 0) + kf.y;
+            } else if (clip.type === 'image') {
+                let imgW = width;
+                let imgH = height;
+                if (clip.naturalWidth && clip.naturalHeight) {
+                    const imgAspect = clip.naturalWidth / clip.naturalHeight;
+                    const canvasAspect = width / height;
+                    if (imgAspect > canvasAspect) {
+                        imgW = width;
+                        imgH = width / imgAspect;
+                    } else {
+                        imgH = height;
+                        imgW = height * imgAspect;
+                    }
+                } else if (clip.sourceUrl) {
+                    const imgEl = this.getImageElement(clip.sourceUrl);
+                    if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
+                        clip.naturalWidth = imgEl.naturalWidth;
+                        clip.naturalHeight = imgEl.naturalHeight;
+                        const imgAspect = imgEl.naturalWidth / imgEl.naturalHeight;
+                        const canvasAspect = width / height;
+                        if (imgAspect > canvasAspect) {
+                            imgW = width;
+                            imgH = width / imgAspect;
+                        } else {
+                            imgH = height;
+                            imgW = height * imgAspect;
+                        }
+                    }
+                }
+                let baseScaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
+                let baseScaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
+                let baseOffsetX = clip.xOffset || 0;
+                let baseOffsetY = clip.yOffset || 0;
+
+                const scaleX = baseScaleX * behaviorTransform.scale * transitionTransform.scale * (kf.scaleX || kf.scale || 1.0);
+                const scaleY = baseScaleY * behaviorTransform.scale * transitionTransform.scale * (kf.scaleY || kf.scale || 1.0);
+
+                drawW = imgW * scaleX;
+                drawH = imgH * scaleY;
+                drawX = (width - drawW) / 2 + baseOffsetX + behaviorTransform.x + transitionTransform.x + kf.x;
+                drawY = (height - drawH) / 2 + baseOffsetY + behaviorTransform.y + transitionTransform.y + kf.y;
             } else {
                 let baseScaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
                 let baseScaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
@@ -513,8 +571,11 @@ class RpaCompositor {
             if (clip.type === 'video') {
                 if (clip.sourceUrl) {
                     const videoEl = this.getVideoElement(clip.sourceUrl);
-                    if (Math.abs(videoEl.currentTime - relTime) > 0.08) {
-                        videoEl.currentTime = relTime;
+                    const driftLimit = isPlaying ? 0.45 : 0.08;
+                    const clipSpeed = Math.max(0.1, Math.min(10.0, clip.speed || 1.0));
+                    const targetMediaTime = (clip.trimStart || 0) + relTime * clipSpeed;
+                    if (Math.abs(videoEl.currentTime - targetMediaTime) > driftLimit) {
+                        videoEl.currentTime = targetMediaTime;
                     }
 
                     if (videoEl.readyState >= 2) {
@@ -568,6 +629,60 @@ class RpaCompositor {
                 if (clip.telemetry && clip.telemetry.length > 0) {
                     activeCursorData = this.interpolateTelemetry(clip.telemetry, relTime);
                 }
+            }
+
+            // A2. Image Clips
+            if (clip.type === 'image') {
+                if (clip.sourceUrl) {
+                    const imgEl = this.getImageElement(clip.sourceUrl);
+                    if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+                        if (!clip.naturalWidth) {
+                            clip.naturalWidth = imgEl.naturalWidth;
+                            clip.naturalHeight = imgEl.naturalHeight;
+                        }
+                        const cr = clip.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+                        const srcW = imgEl.naturalWidth;
+                        const srcH = imgEl.naturalHeight;
+                        const sx = cr.left;
+                        const sy = cr.top;
+                        const sw = Math.max(1, srcW - cr.left - cr.right);
+                        const sh = Math.max(1, srcH - cr.top - cr.bottom);
+
+                        this.ctx.drawImage(imgEl, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
+
+                        // Chroma Key
+                        if (fx.chromaKey) {
+                            this.applyChromaKey(drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
+                        }
+                    } else {
+                        // Loading placeholder
+                        this.ctx.fillStyle = '#1e1e2f';
+                        this.ctx.fillRect(drawX, drawY, drawW, drawH);
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                        this.ctx.font = '14px sans-serif';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.fillText(clip.title || 'Loading image...', drawX + drawW / 2, drawY + drawH / 2);
+                    }
+                } else {
+                    this.ctx.fillStyle = '#2d1b4e';
+                    this.ctx.fillRect(drawX, drawY, drawW, drawH);
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    this.ctx.font = 'bold 15px sans-serif';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(clip.title || 'Image Clip', drawX + drawW / 2, drawY + drawH / 2);
+                }
+
+                // Device Frame overlay (Mac / Windows)
+                if (fx.deviceFrame === 'mac') {
+                    this.renderMacFrame(drawX, drawY, drawW, drawH);
+                } else if (fx.deviceFrame === 'windows') {
+                    this.renderWindowsFrame(drawX, drawY, drawW, drawH);
+                }
+
+                // Render Massive Visual Effects
+                this.renderMassiveEffects(this.ctx, drawX, drawY, drawW, drawH, fx);
             }
 
             // B. Callouts, Text & Shapes
@@ -1167,10 +1282,12 @@ class RpaCompositor {
         }
 
         // Phase 2: DURING (Looping continuous motion)
-        const dStyle = bp.during?.style || 'pulsating';
+        const dStyle = (bp.during?.style || 'pulsating').toLowerCase();
         const dMov = bp.during?.movement || 'scale';
-        const speed = (bp.during?.speed !== undefined) ? bp.during.speed : 1.5; // Hz
-        const amount = ((bp.during?.amount !== undefined) ? bp.during.amount : 25) / 100; // 0.05 to 0.80
+        const loopTime = Math.max(0.2, (bp.during?.loopTime !== undefined ? bp.during.loopTime : (bp.during?.speed ? 1.0 / bp.during.speed : 1.0)));
+        const speed = 1.0 / loopTime; // Frequency in Hz
+        const rawAmount = bp.during?.jump !== undefined ? bp.during.jump : (bp.during?.amount !== undefined ? bp.during.amount : 50);
+        const amount = Math.max(0.1, rawAmount / 50.0); // 1.0 at default 50
 
         let x = 0;
         let y = 0;
@@ -1180,49 +1297,65 @@ class RpaCompositor {
 
         const cycleTime = relTime * speed * Math.PI * 2;
 
-        if (dStyle === 'drift') {
-            x = Math.sin(cycleTime * 0.5) * (amount * 45);
-            y = Math.cos(cycleTime * 0.7) * (amount * 25);
-            rot = Math.sin(cycleTime * 0.4) * (amount * 6);
+        if (dStyle === 'none') {
+            return { x: 0, y: 0, scale: 1.0, rotation: 0, opacity: 1.0 };
         } else if (dStyle === 'jump') {
-            const jumpNorm = ((cycleTime % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
-            if (jumpNorm < Math.PI) {
-                y = -Math.sin(jumpNorm) * (amount * 65);
-                scale = 1.0 + Math.sin(jumpNorm) * (amount * 0.22);
+            // High energetic leap with parabolic flight and squash & stretch landing
+            const normCycle = ((cycleTime % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
+            if (normCycle < Math.PI * 0.75) {
+                const hopT = normCycle / (Math.PI * 0.75);
+                const hop = Math.sin(hopT * Math.PI);
+                y = -hop * (amount * 60);
+                scale = 1.0 + hop * (amount * 0.16);
             } else {
+                const landT = (normCycle - Math.PI * 0.75) / (Math.PI * 0.25);
+                const squash = Math.sin(landT * Math.PI) * (amount * 0.14);
+                scale = 1.0 - squash;
                 y = 0;
             }
+        } else if (dStyle === 'drift') {
+            // Smooth wandering figure-8 glide with gentle roll
+            x = Math.sin(cycleTime * 0.6) * (amount * 35);
+            y = Math.cos(cycleTime * 0.9) * (amount * 22);
+            rot = Math.sin(cycleTime * 0.5) * (amount * 7);
         } else if (dStyle === 'pulsating') {
-            const pulse = Math.pow(Math.sin(cycleTime), 3) * amount;
-            if (dMov === 'scale') {
-                scale = 1.0 + pulse * 0.6;
-            } else if (dMov === 'vertical') {
-                y = Math.sin(cycleTime) * (amount * 50);
-            } else if (dMov === 'horizontal') {
-                x = Math.sin(cycleTime) * (amount * 50);
-            } else if (dMov === 'both') {
-                x = Math.sin(cycleTime) * (amount * 35);
-                y = Math.cos(cycleTime * 0.8) * (amount * 25);
-                scale = 1.0 + pulse * 0.3;
-            } else if (dMov === 'radial') {
-                scale = 1.0 + Math.sin(cycleTime) * (amount * 0.35);
+            // Double-thump heartbeat expansion and contraction
+            const pCycle = cycleTime % (Math.PI * 2);
+            let thump = 0;
+            if (pCycle < Math.PI * 0.35) {
+                thump = Math.sin((pCycle / (Math.PI * 0.35)) * Math.PI) * 0.24;
+            } else if (pCycle < Math.PI * 0.7) {
+                thump = Math.sin(((pCycle - Math.PI * 0.35) / (Math.PI * 0.35)) * Math.PI) * 0.15;
             }
+            scale = 1.0 + thump * amount;
+        } else if (dStyle === 'dancing-wave') {
+            // Smooth harmonic wave translation and tilt
+            y = Math.sin(cycleTime) * (amount * 32);
+            x = Math.cos(cycleTime * 0.5) * (amount * 18);
+            rot = Math.cos(cycleTime) * (amount * 9);
+        } else if (dStyle === 'wobble') {
+            // Rapid elastic jelly wobble
+            rot = Math.sin(cycleTime * 2.8) * (amount * 14);
+            x = Math.sin(cycleTime * 2.8) * (amount * 16);
+            scale = 1.0 + Math.cos(cycleTime * 2.8) * (amount * 0.12);
+        } else if (dStyle === 'swing') {
+            // Hanging pendulum swing around top pivot
+            rot = Math.sin(cycleTime) * (amount * 24);
+            x = Math.sin(cycleTime) * (amount * 32);
+            y = (1 - Math.cos(cycleTime)) * (amount * 14);
         } else if (dStyle === 'float-bob') {
-            y = Math.sin(cycleTime * 0.8) * (amount * 45);
-            x = Math.cos(cycleTime * 0.5) * (amount * 20);
-            rot = Math.sin(cycleTime * 0.6) * (amount * 8);
+            y = Math.sin(cycleTime * 0.8) * (amount * 42);
+            x = Math.cos(cycleTime * 0.5) * (amount * 18);
+            rot = Math.sin(cycleTime * 0.6) * (amount * 7);
         } else if (dStyle === 'wiggle') {
-            x = (Math.sin(cycleTime * 2.8) + Math.cos(cycleTime * 1.7)) * (amount * 20);
-            y = (Math.cos(cycleTime * 2.4) + Math.sin(cycleTime * 1.5)) * (amount * 15);
-            rot = Math.sin(cycleTime * 2.1) * (amount * 12);
+            x = (Math.sin(cycleTime * 2.8) + Math.cos(cycleTime * 1.7)) * (amount * 18);
+            y = (Math.cos(cycleTime * 2.4) + Math.sin(cycleTime * 1.5)) * (amount * 14);
+            rot = Math.sin(cycleTime * 2.1) * (amount * 11);
         } else if (dStyle === 'breathe') {
             const breath = (Math.cos(cycleTime * 0.6) + 1) / 2;
-            scale = 1.0 + breath * amount * 0.4;
-        } else if (dStyle === 'swing') {
-            rot = Math.sin(cycleTime) * (amount * 28);
-            x = Math.sin(cycleTime) * (amount * 30);
+            scale = 1.0 + breath * amount * 0.25;
         } else if (dStyle === 'glitch') {
-            if (Math.sin(cycleTime * 3.2) > 0.7) {
+            if (Math.sin(cycleTime * 3.2) > 0.65) {
                 x = (Math.random() - 0.5) * (amount * 35);
                 y = (Math.random() - 0.5) * (amount * 15);
                 rot = (Math.random() - 0.5) * 6;
@@ -1419,10 +1552,12 @@ class RpaCompositor {
         }
 
         // Phase 2: DURING (Looping continuous alphabet dance)
-        const dStyle = bp.during?.style || 'dancing-wave';
+        const dStyle = (bp.during?.style || 'dancing-wave').toLowerCase();
         const dMov = bp.during?.movement || 'vertical';
-        const speed = (bp.during?.speed !== undefined) ? bp.during.speed : 1.5;
-        const amount = ((bp.during?.amount !== undefined) ? bp.during.amount : 25) / 100;
+        const loopTime = Math.max(0.2, (bp.during?.loopTime !== undefined ? bp.during.loopTime : (bp.during?.speed ? 1.0 / bp.during.speed : 1.0)));
+        const speed = 1.0 / loopTime;
+        const rawAmount = bp.during?.jump !== undefined ? bp.during.jump : (bp.during?.amount !== undefined ? bp.during.amount : 50);
+        const amount = Math.max(0.1, rawAmount / 50.0); // 1.0 at default 50
 
         const cyclePhase = (relTime * speed * Math.PI * 2) - (unitOffset * speed * Math.PI * 2);
 
@@ -1434,67 +1569,82 @@ class RpaCompositor {
         let rot = 0;
         let opacity = 1.0;
 
-        if (dStyle === 'drift') {
-            dx = Math.sin(cyclePhase * 0.5) * (amount * 45);
-            dy = Math.cos(cyclePhase * 0.7) * (amount * 22);
-            rot = Math.sin(cyclePhase * 0.4) * (amount * 5);
-            scale = 1.0 + Math.sin(cyclePhase * 0.3) * (amount * 0.05);
+        if (dStyle === 'none') {
+            return { dx: 0, dy: 0, scale: 1.0, scaleX: 1.0, scaleY: 1.0, rot: 0, opacity: 1.0, visible: true };
         } else if (dStyle === 'jump' || dStyle === 'jump-hop') {
+            // High energetic hop with parabolic curve and landing squash
             const normCycle = ((cyclePhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
-            if (normCycle < Math.PI) {
-                const hop = Math.sin(normCycle);
-                dy = -hop * (amount * 60);
+            if (normCycle < Math.PI * 0.75) {
+                const hopT = normCycle / (Math.PI * 0.75);
+                const hop = Math.sin(hopT * Math.PI);
+                dy = -hop * (amount * 52);
                 scaleY = 1.0 + hop * (amount * 0.28);
                 scaleX = 1.0 - hop * (amount * 0.14);
-                rot = Math.cos(normCycle) * (amount * 8);
+                rot = Math.cos(normCycle) * (amount * 6);
             } else {
-                const groundT = normCycle - Math.PI;
-                const squash = Math.sin(groundT);
-                scaleY = 1.0 - squash * (amount * 0.22);
-                scaleX = 1.0 + squash * (amount * 0.22);
+                const landT = (normCycle - Math.PI * 0.75) / (Math.PI * 0.25);
+                const squash = Math.sin(landT * Math.PI);
+                scaleY = 1.0 - squash * (amount * 0.20);
+                scaleX = 1.0 + squash * (amount * 0.20);
                 dy = 0;
             }
+        } else if (dStyle === 'drift') {
+            // Smooth wandering figure-8 glide with gentle roll
+            dx = Math.sin(cyclePhase * 0.6) * (amount * 30);
+            dy = Math.cos(cyclePhase * 0.9) * (amount * 20);
+            rot = Math.sin(cyclePhase * 0.5) * (amount * 7);
+            scale = 1.0 + Math.sin(cyclePhase * 0.3) * (amount * 0.06);
         } else if (dStyle === 'dancing-wave') {
+            // Smooth vertical harmonic wave along alphabets
             const wave = Math.sin(cyclePhase);
             const cosWave = Math.cos(cyclePhase);
-            dy = wave * (amount * 38);
-            rot = cosWave * (amount * 9);
+            dy = wave * (amount * 34);
+            rot = cosWave * (amount * 10);
             scale = 1.0 + wave * (amount * 0.12);
             if (dMov === 'horizontal') {
-                dx = wave * (amount * 35);
+                dx = wave * (amount * 28);
                 dy = 0;
             } else if (dMov === 'both') {
-                dx = cosWave * (amount * 18);
+                dx = cosWave * (amount * 16);
             }
         } else if (dStyle === 'pulsating') {
-            const pulse = Math.pow(Math.max(0, Math.sin(cyclePhase)), 2.6);
-            if (dMov === 'scale' || dMov === 'both') {
-                scale = 1.0 + pulse * (amount * 0.65);
-                dy = -pulse * (amount * 14);
-            } else if (dMov === 'vertical') {
-                dy = Math.sin(cyclePhase) * (amount * 42);
-            } else if (dMov === 'horizontal') {
-                dx = Math.sin(cyclePhase) * (amount * 42);
-            } else if (dMov === 'radial') {
-                scale = 1.0 + pulse * (amount * 0.5);
+            // Heartbeat rhythmic expansion
+            const pCycle = ((cyclePhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
+            let thump = 0;
+            if (pCycle < Math.PI * 0.35) {
+                thump = Math.sin((pCycle / (Math.PI * 0.35)) * Math.PI) * 0.30;
+            } else if (pCycle < Math.PI * 0.7) {
+                thump = Math.sin(((pCycle - Math.PI * 0.35) / (Math.PI * 0.35)) * Math.PI) * 0.18;
             }
-        } else if (dStyle === 'wiggle-twist') {
-            rot = (Math.sin(cyclePhase * 1.5) + Math.cos(cyclePhase * 2.2)) * (amount * 18);
-            dx = Math.sin(cyclePhase * 1.2) * (amount * 16);
-            dy = Math.cos(cyclePhase * 1.7) * (amount * 14);
-            scale = 1.0 + Math.sin(cyclePhase * 2.0) * (amount * 0.15);
+            scale = 1.0 + thump * amount;
+            scaleX = scale;
+            scaleY = scale;
+        } else if (dStyle === 'wobble') {
+            // Rapid elastic jelly wobble
+            rot = Math.sin(cyclePhase * 2.8) * (amount * 15);
+            dx = Math.cos(cyclePhase * 2.8) * (amount * 12);
+            scaleX = 1.0 + Math.sin(cyclePhase * 2.8) * (amount * 0.18);
+            scaleY = 1.0 - Math.sin(cyclePhase * 2.8) * (amount * 0.18);
+        } else if (dStyle === 'swing') {
+            // Pendulum arc rotation
+            rot = Math.sin(cyclePhase) * (amount * 24);
+            dx = Math.sin(cyclePhase) * (amount * 20);
+            dy = (1 - Math.cos(cyclePhase)) * (amount * 10);
+        } else if (dStyle === 'wiggle-twist' || dStyle === 'wiggle') {
+            rot = (Math.sin(cyclePhase * 1.5) + Math.cos(cyclePhase * 2.2)) * (amount * 16);
+            dx = Math.sin(cyclePhase * 1.2) * (amount * 14);
+            dy = Math.cos(cyclePhase * 1.7) * (amount * 12);
+            scale = 1.0 + Math.sin(cyclePhase * 2.0) * (amount * 0.12);
         } else if (dStyle === 'float-bob') {
             dy = Math.sin(cyclePhase * 0.9) * (amount * 32);
             dx = Math.cos(cyclePhase * 0.5) * (amount * 18);
             rot = Math.sin(cyclePhase * 0.7) * (amount * 8);
             scale = 1.0 + Math.sin(cyclePhase * 0.4) * (amount * 0.08);
-        } else if (dStyle === 'swing') {
-            rot = Math.sin(cyclePhase) * (amount * 26);
-            dx = Math.sin(cyclePhase) * (amount * 14);
-            dy = (1 - Math.cos(rot * Math.PI / 180)) * 20;
         } else if (dStyle === 'breathe') {
             const breath = (Math.cos(cyclePhase * 0.7) + 1) / 2;
-            scale = 1.0 + breath * (amount * 0.45);
+            scale = 1.0 + breath * amount * 0.25;
+            scaleX = scale;
+            scaleY = scale;
         } else if (dStyle === 'glitch') {
             const twitch = Math.sin(cyclePhase * 2.8 + index * 4.2);
             if (twitch > 0.6) {
@@ -3794,6 +3944,50 @@ class RpaCompositor {
             const h = Math.max(20, b.bh * scaleY);
             const x = b.bx + (b.bw - w) / 2;
             const y = b.by + (b.bh - h) / 2;
+            return {
+                x,
+                y,
+                width: w,
+                height: h,
+                cx: x + w / 2,
+                cy: y + h / 2,
+                rotation: clip.rotation || 0
+            };
+        }
+
+        if (clip.type === 'image') {
+            let imgW = width;
+            let imgH = height;
+            if (clip.naturalWidth && clip.naturalHeight) {
+                const imgAspect = clip.naturalWidth / clip.naturalHeight;
+                const canvasAspect = width / height;
+                if (imgAspect > canvasAspect) {
+                    imgW = width;
+                    imgH = width / imgAspect;
+                } else {
+                    imgH = height;
+                    imgW = height * imgAspect;
+                }
+            } else if (clip.sourceUrl) {
+                const imgEl = this.imageElements ? this.imageElements.get(clip.sourceUrl) : null;
+                if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
+                    clip.naturalWidth = imgEl.naturalWidth;
+                    clip.naturalHeight = imgEl.naturalHeight;
+                    const imgAspect = imgEl.naturalWidth / imgEl.naturalHeight;
+                    const canvasAspect = width / height;
+                    if (imgAspect > canvasAspect) {
+                        imgW = width;
+                        imgH = width / imgAspect;
+                    } else {
+                        imgH = height;
+                        imgW = height * imgAspect;
+                    }
+                }
+            }
+            const w = imgW * scaleX;
+            const h = imgH * scaleY;
+            const x = (width - w) / 2 + xOff;
+            const y = (height - h) / 2 + yOff;
             return {
                 x,
                 y,
