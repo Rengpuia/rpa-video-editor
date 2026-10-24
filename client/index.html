@@ -16,7 +16,8 @@
     <!-- Top Navigation Bar -->
     <header class="navbar">
         <div class="brand" id="brandHeader">
-            <span class="brand-badge">RPA</span>
+            <img src="app-icon.png" class="brand-logo" alt="RP Video Editor Logo" style="width: 28px; height: 28px; border-radius: 6px; object-fit: contain; margin-right: 6px;">
+            <span class="brand-badge">RP</span>
             <span>VIDEO EDITOR</span>
             <span class="version-pill" id="btnVersionPill" title="Click to view Version History & Changelog">v2.0.0 Open Source</span>
         </div>
@@ -384,6 +385,12 @@
 
                 <!-- 3. Transitions Tab -->
                 <div id="tabTransitions" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-color); font-size: 11px;">
+                        <span style="color: var(--text-secondary); font-size: 10.5px;">Timeline Actions:</span>
+                        <button type="button" class="btn btn-secondary" id="btnApplyAllTabTransitions" style="font-size: 10px; padding: 3px 8px; border-radius: 4px;" title="Apply selected transition to all clips on the timeline">
+                            🔄 Apply to All Clips
+                        </button>
+                    </div>
                     <div class="tool-filter-bar" data-target="tabTransitions" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-color);">
                         <button class="tool-filter-pill active" data-category="all">All (44)</button>
                         <button class="tool-filter-pill" data-category="dynamic">⚡ Dynamic</button>
@@ -2923,6 +2930,13 @@
                         <!-- Callout Transition Scope Indicator -->
                         <div id="inspectorTransitionScopeNotice" style="margin-top: 8px; font-size: 9.5px; padding: 4px 6px; border-radius: 4px; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.25); color: #93c5fd; display: none;">
                             ✨ <strong>Font-Targeted Transition:</strong> Effects (Shutter Strobe, Flash, Wipe, etc.) apply directly to font text, leaving callout box pristine.
+                        </div>
+
+                        <!-- Apply to All Button -->
+                        <div style="margin-top: 10px;">
+                            <button type="button" class="btn btn-primary" id="btnApplyTransitionAll" style="width: 100%; font-size: 11px; padding: 7px; display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, #4f46e5, #06b6d4); font-weight: 600;" title="Apply this transition setting to all clips across the entire timeline">
+                                <span>🔄</span> <span>Apply Transition to All Clips</span>
+                            </button>
                         </div>
                     </div>
 

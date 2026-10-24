@@ -8,7 +8,7 @@
 
 class RpaExporter {
     /**
-     * Export Timeline with Custom Resolutions, Bitrates & Framerates
+     * Export Timeline with Custom Resolutions, Bitrates & Framerates (Anti-Flicker & Synchronized)
      */
     static async exportTimeline(timeline, compositor, options = {}, onProgress) {
         const targetWidth = options.width || compositor.projectSettings.width || 1920;
@@ -23,7 +23,13 @@ class RpaExporter {
         const exportCanvas = document.createElement('canvas');
         exportCanvas.width = targetWidth;
         exportCanvas.height = targetHeight;
-        const exportCompositor = new window.RpaCompositor(exportCanvas);
+        const exportCtx = exportCanvas.getContext('2d', { alpha: false, desynchronized: true });
+
+        // Buffer Compositor for atomic frame composition (prevents black flashing)
+        const bufferCanvas = document.createElement('canvas');
+        bufferCanvas.width = targetWidth;
+        bufferCanvas.height = targetHeight;
+        const exportCompositor = new window.RpaCompositor(bufferCanvas);
         exportCompositor.visualFx = { ...compositor.visualFx };
         exportCompositor.cursorOptions = { ...compositor.cursorOptions };
         exportCompositor.zoom = { ...compositor.zoom };
@@ -80,7 +86,7 @@ class RpaExporter {
 
         const chunks = [];
         recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) chunks.push(e.data);
+            if (e.data && e.data.size > 0) chunks.push(e.data);
         };
 
         return new Promise((resolve, reject) => {
@@ -91,7 +97,7 @@ class RpaExporter {
                 const blob = new Blob(chunks, { type: mimeType });
                 const url = URL.createObjectURL(blob);
 
-                // Auto-trigger browser download
+                // Auto-trigger browser / desktop download
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `RPA_Video_${targetWidth}x${targetHeight}_${Date.now()}.${extension}`;
@@ -99,25 +105,79 @@ class RpaExporter {
                 a.click();
                 document.body.removeChild(a);
 
+                if (audioCtx) {
+                    try { audioCtx.close(); } catch (_) {}
+                }
+
                 resolve({ blob, url, width: targetWidth, height: targetHeight, duration: totalDuration });
             };
 
-            recorder.start();
+            recorder.start(100);
 
-            let currentTime = 0;
-            const timer = setInterval(() => {
-                currentTime += 1 / fps;
-                exportCompositor.renderFrame(timeline, currentTime);
+            // Synchronous Frame Seeking to Eliminate Black/Flashing Frames
+            const seekAllActiveVideos = async (time) => {
+                const seekPromises = [];
+                for (const clip of timeline.clips) {
+                    if (clip.type === 'video' && clip.sourceUrl && time >= clip.startTime && time <= (clip.startTime + clip.duration)) {
+                        const v = exportCompositor.getVideoElement(clip.sourceUrl);
+                        if (v) {
+                            const relTime = time - clip.startTime;
+                            const targetTime = (clip.trimStart || 0) + relTime * (clip.speed || 1.0);
+                            if (Math.abs(v.currentTime - targetTime) > 0.04) {
+                                seekPromises.push(new Promise((res) => {
+                                    let done = false;
+                                    const finish = () => {
+                                        if (!done) {
+                                            done = true;
+                                            v.removeEventListener('seeked', finish);
+                                            res();
+                                        }
+                                    };
+                                    v.addEventListener('seeked', finish, { once: true });
+                                    try { v.currentTime = targetTime; } catch (_) { finish(); }
+                                    setTimeout(finish, 75); // Safety watchdog timeout
+                                }));
+                            }
+                        }
+                    }
+                }
+                if (seekPromises.length > 0) {
+                    await Promise.all(seekPromises);
+                }
+            };
 
-                if (onProgress) {
-                    onProgress(Math.min(100, (currentTime / totalDuration) * 100));
+            const runRenderLoop = async () => {
+                let currentTime = 0;
+                const dt = 1 / fps;
+
+                while (currentTime <= totalDuration) {
+                    // 1. Wait for video decoders to stabilize at current timestamp
+                    await seekAllActiveVideos(currentTime);
+
+                    // 2. Render frame into buffer canvas
+                    exportCompositor.renderFrame(timeline, currentTime);
+
+                    // 3. Atomically blit composite buffer to export canvas (zero flicker/flash)
+                    exportCtx.drawImage(bufferCanvas, 0, 0);
+
+                    if (onProgress) {
+                        onProgress(Math.min(100, (currentTime / totalDuration) * 100));
+                    }
+
+                    currentTime += dt;
+                    // Yield slightly for MediaRecorder chunk dispatch
+                    await new Promise(r => setTimeout(r, Math.max(8, Math.floor(frameInterval * 0.65))));
                 }
 
-                if (currentTime >= totalDuration) {
-                    clearInterval(timer);
-                    recorder.stop();
-                }
-            }, frameInterval);
+                // Final safety flush before stop
+                await new Promise(r => setTimeout(r, 250));
+                recorder.stop();
+            };
+
+            runRenderLoop().catch(err => {
+                console.error('[RPA Exporter] Render error:', err);
+                reject(err);
+            });
         });
     }
 }

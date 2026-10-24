@@ -381,9 +381,9 @@ class RpaCompositor {
             const kf = this.computeKeyframes(clip, relTime);
 
             // Apply Transforms: Translation, Scale, Rotation, Opacity
-            // For Callouts/Annotations: box container chassis stays stationary & pristine; behaviors and transitions apply directly to font text inside renderCallout
             if (clip.type === 'callout') {
-                this.ctx.globalAlpha = (clip.opacity !== undefined ? clip.opacity : 1.0) * kf.opacity;
+                const bAlpha = behaviorTransform.opacity !== undefined ? behaviorTransform.opacity : 1.0;
+                this.ctx.globalAlpha = (clip.opacity !== undefined ? clip.opacity : 1.0) * transitionAlpha * bAlpha * kf.opacity;
             } else {
                 this.ctx.globalAlpha = (clip.opacity !== undefined ? clip.opacity : 1.0) * transitionAlpha * behaviorTransform.opacity * kf.opacity;
             }
@@ -433,12 +433,13 @@ class RpaCompositor {
 
             if (clip.type === 'callout') {
                 const b = this.getCalloutBounds(clip, width, height);
-                const sX = (kf.scaleX || kf.scale || 1.0);
-                const sY = (kf.scaleY || kf.scale || 1.0);
+                const bScale = behaviorTransform.scale !== undefined ? behaviorTransform.scale : 1.0;
+                const sX = (kf.scaleX || kf.scale || 1.0) * bScale;
+                const sY = (kf.scaleY || kf.scale || 1.0) * bScale;
                 drawW = b.bw * sX;
                 drawH = b.bh * sY;
-                drawX = b.bx + (b.bw - drawW) / 2 + kf.x;
-                drawY = b.by + (b.bh - drawH) / 2 + kf.y;
+                drawX = b.bx + (b.bw - drawW) / 2 + (behaviorTransform.x || 0) + (transitionTransform.x || 0) + kf.x;
+                drawY = b.by + (b.bh - drawH) / 2 + (behaviorTransform.y || 0) + (transitionTransform.y || 0) + kf.y;
             } else {
                 let baseScaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
                 let baseScaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
@@ -454,8 +455,8 @@ class RpaCompositor {
                 drawY = (height - drawH) / 2 + baseOffsetY + behaviorTransform.y + transitionTransform.y + kf.y;
             }
 
-            const rotBeh = (clip.type === 'callout') ? 0 : (behaviorTransform.rotation || 0);
-            const rotTrans = (clip.type === 'callout') ? 0 : (transitionTransform.rotation || 0);
+            const rotBeh = behaviorTransform.rotation || 0;
+            const rotTrans = transitionTransform.rotation || 0;
             if (clip.rotation || rotBeh || kf.rotation || rotTrans) {
                 this.ctx.translate(drawX + drawW / 2, drawY + drawH / 2);
                 this.ctx.rotate(((clip.rotation || 0) + rotBeh + rotTrans + kf.rotation) * Math.PI / 180);

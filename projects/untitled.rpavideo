@@ -37,7 +37,7 @@
   ],
   "clips": [
     {
-      "id": "clip_1792833313238_qss4",
+      "id": "clip_1792851301515_iuk9",
       "title": "Welcome Screen Recording.mp4",
       "type": "video",
       "trackId": 2,
@@ -142,7 +142,7 @@
       "keyframes": []
     },
     {
-      "id": "clip_1792833313238_8y8k",
+      "id": "clip_1792851301515_yreu",
       "title": "Title Header",
       "type": "callout",
       "trackId": 4,
@@ -224,28 +224,28 @@
   ],
   "markers": [
     {
-      "id": "marker_1792833313239",
+      "id": "marker_1792851301515",
       "time": 0,
       "label": "Intro"
     },
     {
-      "id": "marker_1792833313239",
+      "id": "marker_1792851301515",
       "time": 5,
       "label": "Step 1: Capture"
     }
   ],
   "captions": [
     {
-      "id": "cap_1792833313239_j55w",
+      "id": "cap_1792851301515_b2x3",
       "startTime": 0.5,
       "duration": 4,
       "text": "Welcome to RPA Video Editor Pro"
     },
     {
-      "id": "cap_1792833313239_kops",
+      "id": "cap_1792851301515_r7r4",
       "startTime": 5,
       "duration": 4.5,
-      "text": "Multi-layer timeline with Studio features"
+      "text": "Multi-layer timeline with Studio motion features"
     }
   ],
   "projectSettings": {

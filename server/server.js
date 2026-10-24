@@ -150,12 +150,17 @@ function handleApiRequest(req, res, url) {
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
             try {
+                if (!fs.existsSync(PROJECTS_DIR)) {
+                    fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+                }
                 const project = JSON.parse(body);
-                const id = (project.title || 'untitled').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+                let id = (project.title || 'untitled').trim().replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+                id = id.replace(/^_+|_+$/g, '') || `project_${Date.now()}`;
                 const filePath = path.join(PROJECTS_DIR, `${id}.rpavideo`);
                 fs.writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf8');
                 return sendJson(res, 200, { success: true, id, path: filePath });
             } catch (err) {
+                console.error('[Server Save Error]', err);
                 return sendJson(res, 400, { error: `Failed to save project: ${err.message}` });
             }
         });

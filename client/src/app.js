@@ -1239,6 +1239,14 @@ class RpaStudioApp {
                 }
             };
         }
+        const btnApplyAll = document.getElementById('btnApplyTransitionAll');
+        if (btnApplyAll) {
+            btnApplyAll.onclick = () => this.applyCurrentTransitionToAllClips();
+        }
+        const btnApplyAllTab = document.getElementById('btnApplyAllTabTransitions');
+        if (btnApplyAllTab) {
+            btnApplyAllTab.onclick = () => this.applyCurrentTransitionToAllClips();
+        }
 
         // ====================================================
         // Studio-EXACT BEHAVIOR CONTROLLER & INSPECTOR
@@ -2838,6 +2846,89 @@ class RpaStudioApp {
                 webcamShadow,
                 webcamMirror
             });
+
+            // Start Live Studio Recording Monitor on preview canvas
+            if (this.recorder.isRecording && this.recorder.stream) {
+                const liveVideo = document.createElement('video');
+                liveVideo.muted = true;
+                liveVideo.autoplay = true;
+                liveVideo.playsInline = true;
+                liveVideo.srcObject = this.recorder.stream;
+                try {
+                    await liveVideo.play();
+                } catch (_) {}
+
+                const startRecTime = performance.now();
+                const recLoop = () => {
+                    if (!this.recorder.isRecording) {
+                        try {
+                            liveVideo.pause();
+                            liveVideo.srcObject = null;
+                        } catch (_) {}
+                        this.compositor.renderFrame(this.timeline, this.playheadTime);
+                        return;
+                    }
+
+                    const canvas = this.compositor.canvas;
+                    const ctx = this.compositor.ctx;
+                    const { width, height } = canvas;
+
+                    // 1. Draw Live Screen/Webcam Feed
+                    ctx.fillStyle = '#0b0d11';
+                    ctx.fillRect(0, 0, width, height);
+
+                    if (liveVideo.videoWidth > 0 && liveVideo.videoHeight > 0) {
+                        const aspect = liveVideo.videoWidth / liveVideo.videoHeight;
+                        const cAspect = width / height;
+                        let dw, dh, dx, dy;
+                        if (aspect > cAspect) {
+                            dw = width;
+                            dh = width / aspect;
+                            dx = 0;
+                            dy = (height - dh) / 2;
+                        } else {
+                            dh = height;
+                            dw = height * aspect;
+                            dx = (width - dw) / 2;
+                            dy = 0;
+                        }
+                        ctx.drawImage(liveVideo, dx, dy, dw, dh);
+                    } else if (this.recorder.compositeCanvas) {
+                        ctx.drawImage(this.recorder.compositeCanvas, 0, 0, width, height);
+                    }
+
+                    // 2. Render Studio Live Recording HUD Badge
+                    const elapsedSec = Math.floor((performance.now() - startRecTime) / 1000);
+                    const recMin = Math.floor(elapsedSec / 60);
+                    const recSec = elapsedSec % 60;
+                    const timeStr = `${String(recMin).padStart(2, '0')}:${String(recSec).padStart(2, '0')}`;
+
+                    ctx.save();
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                    ctx.shadowBlur = 10;
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+                    ctx.beginPath();
+                    if (ctx.roundRect) ctx.roundRect(24, 24, 150, 36, 18);
+                    else ctx.rect(24, 24, 150, 36);
+                    ctx.fill();
+
+                    const blink = Math.sin(performance.now() / 250) > 0;
+                    ctx.fillStyle = blink ? '#ffffff' : '#fca5a5';
+                    ctx.beginPath();
+                    ctx.arc(44, 42, 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(`REC ${timeStr}`, 58, 42);
+                    ctx.restore();
+
+                    requestAnimationFrame(recLoop);
+                };
+                requestAnimationFrame(recLoop);
+            }
         } catch (err) {
             recordBtn.innerText = '⏺ Record';
             recordBtn.style.animation = 'none';
@@ -2940,19 +3031,39 @@ class RpaStudioApp {
         const leftPx = this.playheadTime * this.timeline.pixelsPerSecond;
         const playheadEl = document.getElementById('playhead');
         if (playheadEl) {
-            playheadEl.style.left = `${leftPx + 140}px`; // 140px track header
+            playheadEl.style.left = '0px';
+            playheadEl.style.transform = `translate3d(${leftPx + 140}px, 0, 0)`;
         }
 
         const mins = Math.floor(this.playheadTime / 60);
         const secs = Math.floor(this.playheadTime % 60);
         const centis = Math.floor((this.playheadTime % 1) * 100);
-        document.getElementById('lblTimecode').innerText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+        const lblTime = document.getElementById('lblTimecode');
+        if (lblTime) {
+            lblTime.innerText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+        }
+
+        // Auto-follow playhead during playback
+        if (this.isPlaying) {
+            const scrollArea = document.getElementById('timelineScrollArea');
+            if (scrollArea) {
+                const playheadScreenX = leftPx + 140;
+                const viewLeft = scrollArea.scrollLeft;
+                const viewRight = scrollArea.scrollLeft + scrollArea.clientWidth;
+                if (playheadScreenX > viewRight - 40) {
+                    scrollArea.scrollLeft = playheadScreenX - 140;
+                } else if (playheadScreenX < viewLeft + 140) {
+                    scrollArea.scrollLeft = Math.max(0, playheadScreenX - 140);
+                }
+            }
+        }
     }
 
     updateTimelineRuler() {
         const scrollArea = document.getElementById('timelineScrollArea');
         const ruler = document.getElementById('timelineRuler');
         const tracksContainer = document.getElementById('tracksContainer');
+        if (!ruler) return;
         ruler.innerHTML = '';
 
         const minWidth = Math.max(
@@ -2963,6 +3074,7 @@ class RpaStudioApp {
         if (tracksContainer) tracksContainer.style.width = `${minWidth}px`;
 
         const stepSec = this.timeline.pixelsPerSecond >= 60 ? 1 : (this.timeline.pixelsPerSecond >= 30 ? 2 : 5);
+        const fragment = document.createDocumentFragment();
 
         for (let t = 0; t <= this.timeline.totalDuration; t += stepSec) {
             const left = t * this.timeline.pixelsPerSecond + 140;
@@ -2975,12 +3087,12 @@ class RpaStudioApp {
             label.style.left = `${left}px`;
             label.innerText = `${t}s`;
 
-            ruler.appendChild(tick);
-            ruler.appendChild(label);
+            fragment.appendChild(tick);
+            fragment.appendChild(label);
         }
 
         // Render Markers
-        for (const m of this.timeline.markers) {
+        for (const m of (this.timeline.markers || [])) {
             const left = m.time * this.timeline.pixelsPerSecond + 140;
             const markerEl = document.createElement('div');
             markerEl.className = 'timeline-marker';
@@ -2990,8 +3102,10 @@ class RpaStudioApp {
                 e.stopPropagation();
                 this.seek(m.time);
             };
-            ruler.appendChild(markerEl);
+            fragment.appendChild(markerEl);
         }
+
+        ruler.appendChild(fragment);
     }
 
     renderTimeline() {
@@ -3834,26 +3948,90 @@ class RpaStudioApp {
         });
     }
 
+    applyCurrentTransitionToAllClips(transType = null) {
+        let transIn = transType || 'fade';
+        let transOut = transType || 'fade';
+        let dur = 0.8;
+        const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+        if (!transType && selClip) {
+            if (selClip.transitionIn && selClip.transitionIn !== 'none') transIn = selClip.transitionIn;
+            if (selClip.transitionOut && selClip.transitionOut !== 'none') transOut = selClip.transitionOut;
+            dur = selClip.transitionInDuration || selClip.transitionOutDuration || 0.8;
+        } else if (!transType) {
+            const selIn = document.getElementById('selTransitionIn');
+            if (selIn && selIn.value !== 'none') transIn = selIn.value;
+            const selOut = document.getElementById('selTransitionOut');
+            if (selOut && selOut.value !== 'none') transOut = selOut.value;
+            const rng = document.getElementById('rngTransitionDuration');
+            if (rng) dur = parseInt(rng.value, 10) / 10.0;
+        }
+
+        let count = 0;
+        for (const clip of this.timeline.clips) {
+            if (clip.type === 'video' || clip.type === 'image' || clip.type === 'callout') {
+                const safeDur = Math.max(0.1, Math.min(dur, (clip.duration || 1.0) * 0.45));
+                clip.transitionIn = transIn;
+                clip.transitionInDuration = safeDur;
+                clip.transitionOut = transOut;
+                clip.transitionOutDuration = safeDur;
+                count++;
+            }
+        }
+
+        this.timeline.saveSnapshot();
+        this.renderTimeline();
+        if (selClip) this.renderProperties(selClip);
+        this.compositor.renderFrame(this.timeline, this.playheadTime);
+        alert(`Successfully applied transition (${transIn} / ${transOut}, ${dur.toFixed(1)}s) to all ${count} clips on the timeline!`);
+    }
+
     async saveProject() {
-        const title = prompt('Project Name:', 'RPA_Workflow_Video') || 'Untitled';
+        const defaultName = this.compositor.projectSettings?.name || 'RPA_Workflow_Video';
+        const title = prompt('Project Name:', defaultName);
+        if (title === null) return; // User pressed Cancel
+        const cleanTitle = (title || 'Untitled').trim();
+
+        // Sanitize clips: strip DOM references, preview elements, and non-serializable objects
+        const sanitizedClips = (this.timeline.clips || []).map(clip => {
+            const { element, _previewEl, cachedImage, audioBuffer, video, ...safeClip } = clip;
+            return safeClip;
+        });
+
         const projectData = {
-            title,
+            title: cleanTitle,
             duration: this.timeline.totalDuration,
             tracks: this.timeline.tracks,
-            clips: this.timeline.clips,
-            markers: this.timeline.markers,
-            captions: this.timeline.captions,
-            projectSettings: this.compositor.projectSettings
+            clips: sanitizedClips,
+            markers: this.timeline.markers || [],
+            captions: this.timeline.captions || [],
+            projectSettings: this.compositor.projectSettings || {}
         };
 
-        const res = await fetch('/api/projects/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(projectData)
-        });
-        const data = await res.json();
-        if (data.success) {
-            alert(`Project saved: ${data.path}`);
+        try {
+            const res = await fetch('/api/projects/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(projectData)
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                alert(`Project successfully saved!\nLocation: ${data.path || data.id}`);
+            } else {
+                throw new Error(data.error || 'Server error saving project');
+            }
+        } catch (err) {
+            console.error('[Save Project Error]', err);
+            // Safe offline fallback: direct JSON download
+            const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            const safeFileName = cleanTitle.replace(/[^a-zA-Z0-9_-]/g, '_') || 'project';
+            a.download = `${safeFileName}.rpavideo`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+            alert(`Project saved directly to your Downloads folder as "${safeFileName}.rpavideo".\nNotice: ${err.message}`);
         }
     }
 

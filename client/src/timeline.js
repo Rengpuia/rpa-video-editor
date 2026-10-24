@@ -810,8 +810,19 @@ class RpaTimeline {
                     if (e.button !== undefined && e.button !== 0) return;
 
                     const actionTarget = e.target.closest('[data-action]');
-                    const action = actionTarget ? actionTarget.dataset.action : null;
-                    const targetEl = actionTarget || e.target;
+                    let action = actionTarget ? actionTarget.dataset.action : null;
+                    let targetEl = actionTarget || e.target;
+
+                    // Edge Trim Priority: Clicking within 14px of clip borders always pulls clip duration (unblocked by transitions)
+                    const clipRect = clipEl.getBoundingClientRect();
+                    const clickRelX = e.clientX - clipRect.left;
+                    if (clickRelX <= 14 && action !== 'del-trans-in' && action !== 'del-intermediate-trans') {
+                        action = 'trim-left';
+                        targetEl = clipEl.querySelector('.clip-handle-left') || clipEl;
+                    } else if ((clipRect.width - clickRelX) <= 14 && action !== 'del-trans-out' && action !== 'del-intermediate-trans') {
+                        action = 'trim-right';
+                        targetEl = clipEl.querySelector('.clip-handle-right') || clipEl;
+                    }
 
                     // A. Instant Delete Actions right on timeline
                     if (action === 'del-trans-in') {
@@ -1186,8 +1197,11 @@ class RpaTimeline {
 
                         clipEl.style.left = `${clip.startTime * this.pixelsPerSecond}px`;
                         clipEl.style.width = `${clip.duration * this.pixelsPerSecond}px`;
+                        const curWedgeIn = clipEl.querySelector('.wedge-in');
+                        if (curWedgeIn) curWedgeIn.style.width = `${Math.max(20, Math.min(clip.duration * this.pixelsPerSecond * 0.48, (clip.transitionInDuration || 0.8) * this.pixelsPerSecond))}px`;
+                        const curWedgeOut = clipEl.querySelector('.wedge-out');
+                        if (curWedgeOut) curWedgeOut.style.width = `${Math.max(20, Math.min(clip.duration * this.pixelsPerSecond * 0.48, (clip.transitionOutDuration || 0.8) * this.pixelsPerSecond))}px`;
                         this.updateTotalDuration();
-                        if (window.rpaStudio) window.rpaStudio.updateTimelineRuler();
                     };
 
                     const onClipEnd = () => {
@@ -1199,6 +1213,7 @@ class RpaTimeline {
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {
+                            window.rpaStudio.updateTimelineRuler();
                             window.rpaStudio.renderProperties(clip);
                             window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
                         }
