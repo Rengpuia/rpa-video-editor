@@ -297,9 +297,9 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 12px;
-    z-index: 60;
-    background: rgba(255, 255, 255, 0.28);
+    width: 16px;
+    z-index: 80;
+    background: rgba(255, 255, 255, 0.32);
     cursor: ew-resize;
     display: none;
     transition: background 0.12s ease;
@@ -312,17 +312,17 @@
     left: 0; 
     border-top-left-radius: 4px; 
     border-bottom-left-radius: 4px;
-    border-right: 1px solid rgba(255, 255, 255, 0.45);
+    border-right: 2px solid rgba(255, 255, 255, 0.65);
 }
 .clip-handle-right { 
     right: 0; 
     border-top-right-radius: 4px; 
     border-bottom-right-radius: 4px;
-    border-left: 1px solid rgba(255, 255, 255, 0.45);
+    border-left: 2px solid rgba(255, 255, 255, 0.65);
 }
 .clip-handle:hover { 
-    background: rgba(255, 255, 255, 0.85); 
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.95); 
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
 }
 
 .clip-video { background: linear-gradient(135deg, #1d4ed8, #2563eb); }

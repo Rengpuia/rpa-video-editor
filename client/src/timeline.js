@@ -813,13 +813,13 @@ class RpaTimeline {
                     let action = actionTarget ? actionTarget.dataset.action : null;
                     let targetEl = actionTarget || e.target;
 
-                    // Edge Trim Priority: Clicking within 14px of clip borders always pulls clip duration (unblocked by transitions)
+                    // Edge Trim Priority: Clicking within 18px of clip borders always pulls clip duration (unblocked by transitions)
                     const clipRect = clipEl.getBoundingClientRect();
                     const clickRelX = e.clientX - clipRect.left;
-                    if (clickRelX <= 14 && action !== 'del-trans-in' && action !== 'del-intermediate-trans') {
+                    if (clickRelX <= 18 && action !== 'del-trans-in' && action !== 'del-intermediate-trans') {
                         action = 'trim-left';
                         targetEl = clipEl.querySelector('.clip-handle-left') || clipEl;
-                    } else if ((clipRect.width - clickRelX) <= 14 && action !== 'del-trans-out' && action !== 'del-intermediate-trans') {
+                    } else if ((clipRect.width - clickRelX) <= 18 && action !== 'del-trans-out' && action !== 'del-intermediate-trans') {
                         action = 'trim-right';
                         targetEl = clipEl.querySelector('.clip-handle-right') || clipEl;
                     }

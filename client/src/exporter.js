@@ -23,13 +23,14 @@ class RpaExporter {
         const exportCanvas = document.createElement('canvas');
         exportCanvas.width = targetWidth;
         exportCanvas.height = targetHeight;
-        const exportCtx = exportCanvas.getContext('2d', { alpha: false, desynchronized: true });
+        const exportCtx = exportCanvas.getContext('2d', { alpha: true });
 
         // Buffer Compositor for atomic frame composition (prevents black flashing)
         const bufferCanvas = document.createElement('canvas');
         bufferCanvas.width = targetWidth;
         bufferCanvas.height = targetHeight;
         const exportCompositor = new window.RpaCompositor(bufferCanvas);
+        exportCompositor.setProjectSettings(targetWidth, targetHeight, fps, compositor.projectSettings?.backgroundColor || '#0f1115');
         exportCompositor.visualFx = { ...compositor.visualFx };
         exportCompositor.cursorOptions = { ...compositor.cursorOptions };
         exportCompositor.zoom = { ...compositor.zoom };
@@ -123,19 +124,21 @@ class RpaExporter {
                         if (v) {
                             const relTime = time - clip.startTime;
                             const targetTime = (clip.trimStart || 0) + relTime * (clip.speed || 1.0);
-                            if (Math.abs(v.currentTime - targetTime) > 0.04) {
+                            if (Math.abs(v.currentTime - targetTime) > 0.03 || v.seeking || v.readyState < 2) {
                                 seekPromises.push(new Promise((res) => {
                                     let done = false;
                                     const finish = () => {
                                         if (!done) {
                                             done = true;
                                             v.removeEventListener('seeked', finish);
+                                            v.removeEventListener('canplay', finish);
                                             res();
                                         }
                                     };
                                     v.addEventListener('seeked', finish, { once: true });
+                                    v.addEventListener('canplay', finish, { once: true });
                                     try { v.currentTime = targetTime; } catch (_) { finish(); }
-                                    setTimeout(finish, 75); // Safety watchdog timeout
+                                    setTimeout(finish, 100); // Safety watchdog timeout
                                 }));
                             }
                         }

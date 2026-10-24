@@ -28,6 +28,11 @@ class RpaStudioApp {
         this.vuAnalyser = null;
         this.vuDataArray = null;
 
+        // Clipboard, Media Bin & Project Dirty State
+        this.clipboardClip = null;
+        this.mediaBin = [];
+        this.isDirty = false;
+
         this.initUI();
         this.setupPlayheadDragging();
         this.setupKeyboardShortcuts();
@@ -55,9 +60,34 @@ class RpaStudioApp {
             this.updateTimelineRuler();
         };
         document.getElementById('btnSplitClip').onclick = () => this.splitSelectedClip();
+        const btnCopy = document.getElementById('btnCopyClip');
+        if (btnCopy) btnCopy.onclick = () => this.copySelectedClip();
+        const btnPaste = document.getElementById('btnPasteClip');
+        if (btnPaste) btnPaste.onclick = () => this.pasteClip();
         document.getElementById('btnCutSelection').onclick = () => this.cutRangeSelection();
         document.getElementById('btnDeleteClip').onclick = () => this.deleteSelectedClip();
         document.getElementById('btnAddMarker').onclick = () => this.addMarkerAtPlayhead();
+
+        // Native Desktop Close & Unsaved State Interception
+        if (window.rpaNative && window.rpaNative.onPromptSaveBeforeClose) {
+            window.rpaNative.onPromptSaveBeforeClose(async () => {
+                try {
+                    await this.saveProject(true);
+                } catch (err) {
+                    console.error('[Prompt Save Error]', err);
+                } finally {
+                    if (window.rpaNative.confirmSaveComplete) {
+                        window.rpaNative.confirmSaveComplete(true);
+                    }
+                }
+            });
+        }
+        window.addEventListener('beforeunload', (e) => {
+            if (this.isDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
 
         // Separate Video and Audio buttons
         const separateHandler = () => {
@@ -176,6 +206,11 @@ class RpaStudioApp {
             document.getElementById('toolPointer').classList.toggle('active', tool === 'pointer');
             document.getElementById('toolHand').classList.toggle('active', tool === 'hand');
             document.getElementById('toolCrop').classList.toggle('active', tool === 'crop');
+            if (this.canvas) {
+                if (tool === 'hand') this.canvas.style.cursor = 'grab';
+                else if (tool === 'crop') this.canvas.style.cursor = 'crosshair';
+                else this.canvas.style.cursor = 'default';
+            }
             this.compositor.renderFrame(this.timeline, this.playheadTime);
         };
         document.getElementById('toolPointer').onclick = () => setCanvasTool('pointer');
@@ -194,10 +229,22 @@ class RpaStudioApp {
             }
         };
 
-        // 6. Project Settings Modal
+        // 6. Project Settings Modal (Solid & Transparent Backgrounds)
         document.getElementById('btnOpenProjectSettings').onclick = () => {
+            const isTrans = this.compositor.projectSettings?.backgroundColor === 'transparent';
+            const selBgMode = document.getElementById('selProjectBackgroundMode');
+            const colBg = document.getElementById('colProjectBackground');
+            if (selBgMode) selBgMode.value = isTrans ? 'transparent' : 'solid';
+            if (colBg) colBg.style.opacity = isTrans ? '0.35' : '1.0';
             document.getElementById('projectSettingsModal').classList.remove('hidden');
         };
+        const selBgMode = document.getElementById('selProjectBackgroundMode');
+        if (selBgMode) {
+            selBgMode.onchange = (e) => {
+                const colBg = document.getElementById('colProjectBackground');
+                if (colBg) colBg.style.opacity = e.target.value === 'transparent' ? '0.35' : '1.0';
+            };
+        }
         document.getElementById('selProjectPreset').onchange = (e) => {
             const val = e.target.value;
             if (val === '3840x2160') {
@@ -221,12 +268,76 @@ class RpaStudioApp {
             const w = parseInt(document.getElementById('numProjectWidth').value, 10);
             const h = parseInt(document.getElementById('numProjectHeight').value, 10);
             const fps = parseInt(document.getElementById('selProjectFps').value, 10);
-            const bg = document.getElementById('colProjectBackground').value;
+            const bgMode = document.getElementById('selProjectBackgroundMode')?.value || 'solid';
+            const bg = bgMode === 'transparent' ? 'transparent' : document.getElementById('colProjectBackground').value;
             this.compositor.setProjectSettings(w, h, fps, bg);
             document.getElementById('lblCanvasDimensions').innerText = `${w}x${h} (${fps}fps)`;
             document.getElementById('projectSettingsModal').classList.add('hidden');
             this.compositor.renderFrame(this.timeline, this.playheadTime);
+            this.markDirty(true);
         };
+
+        // Pre-recording Live Setup Preview
+        const btnToggleRecPreview = document.getElementById('btnToggleRecSetupPreview');
+        const recPreviewVid = document.getElementById('recSetupPreviewVideo');
+        const recPlaceholder = document.getElementById('recSetupPlaceholder');
+        let recSetupStream = null;
+
+        const stopRecSetupPreview = () => {
+            if (recSetupStream) {
+                recSetupStream.getTracks().forEach(t => t.stop());
+                recSetupStream = null;
+            }
+            if (recPreviewVid) {
+                recPreviewVid.srcObject = null;
+                recPreviewVid.style.display = 'none';
+            }
+            if (recPlaceholder) recPlaceholder.style.display = 'block';
+            if (btnToggleRecPreview) btnToggleRecPreview.innerHTML = '<span>📹</span> Test Camera Feed';
+        };
+        this.stopRecSetupPreview = stopRecSetupPreview;
+
+        if (btnToggleRecPreview) {
+            btnToggleRecPreview.onclick = async () => {
+                if (recSetupStream) {
+                    stopRecSetupPreview();
+                    return;
+                }
+                try {
+                    const camSelect = document.getElementById('cameraDeviceSelect');
+                    const constraints = {
+                        video: camSelect && camSelect.value && camSelect.value !== 'default'
+                            ? { deviceId: { exact: camSelect.value } }
+                            : true,
+                        audio: false
+                    };
+                    recSetupStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    if (recPreviewVid) {
+                        recPreviewVid.srcObject = recSetupStream;
+                        recPreviewVid.style.display = 'block';
+                    }
+                    if (recPlaceholder) recPlaceholder.style.display = 'none';
+                    btnToggleRecPreview.innerHTML = '<span>⏹</span> Stop Camera Feed';
+                } catch (err) {
+                    console.error('[Pre-recording Preview Error]', err);
+                    alert(`Camera preview unavailable: ${err.message}`);
+                }
+            };
+        }
+
+        // Video Output Destination Folder Picker
+        const btnBrowseOutput = document.getElementById('btnBrowseOutputFolder');
+        const txtOutputFolder = document.getElementById('txtExportOutputFolder');
+        if (btnBrowseOutput && txtOutputFolder) {
+            btnBrowseOutput.onclick = async () => {
+                if (window.rpaNative && window.rpaNative.selectDirectory) {
+                    const dir = await window.rpaNative.selectDirectory();
+                    if (dir) txtOutputFolder.value = dir;
+                } else {
+                    alert('Custom output folder selection is available in the desktop application.');
+                }
+            };
+        }
 
         // 7. GPU & Hardware Acceleration Modal
         document.getElementById('btnOpenGpuSettings').onclick = () => {
@@ -1662,6 +1773,16 @@ class RpaStudioApp {
         bindInspFx('chkScanlinesInspector', 'scanlines', null, '', true);
         bindInspFx('chkInvertInspector', 'invert', null, '', true);
         bindInspFx('chkDropShadowInspector', 'dropShadow', null, '', true);
+        bindInspFx('propDropShadowPower', 'dropShadowPower', 'lblDropShadowPower', 'x');
+        bindInspFx('propDropShadowBlur', 'dropShadowBlur', 'lblDropShadowBlur', 'px');
+
+        const chkDropShadow = document.getElementById('chkDropShadowInspector');
+        if (chkDropShadow) {
+            chkDropShadow.addEventListener('change', (e) => {
+                const grp = document.getElementById('grpDropShadowParams');
+                if (grp) grp.style.display = e.target.checked ? 'grid' : 'none';
+            });
+        }
         bindInspFx('propChromaticAberration', 'chromaticAberration', 'lblChromaticAberration', 'px');
         bindInspFx('propWaveWarp', 'waveWarp', 'lblWaveWarp', 'px');
         bindInspFx('propLensDistortion', 'lensDistortion', 'lblLensDistortion', '%');
@@ -2267,11 +2388,17 @@ class RpaStudioApp {
             const time = getTimeFromPointer(e.clientX);
             this.seek(time);
 
+            let scrubRaf = null;
             const onPointerMove = (moveEvent) => {
                 if (!this.isDraggingPlayhead) return;
                 moveEvent.preventDefault();
                 const newTime = getTimeFromPointer(moveEvent.clientX);
-                this.seek(newTime);
+                if (!scrubRaf) {
+                    scrubRaf = requestAnimationFrame(() => {
+                        this.seek(newTime);
+                        scrubRaf = null;
+                    });
+                }
 
                 // Auto-scroll timeline when dragging near edges
                 const rect = scrollArea.getBoundingClientRect();
@@ -2285,6 +2412,10 @@ class RpaStudioApp {
 
             const onPointerUp = (upEvent) => {
                 this.isDraggingPlayhead = false;
+                if (scrubRaf) {
+                    cancelAnimationFrame(scrubRaf);
+                    scrubRaf = null;
+                }
                 window.removeEventListener('pointermove', onPointerMove);
                 window.removeEventListener('pointerup', onPointerUp);
                 window.removeEventListener('mousemove', onPointerMove);
@@ -2741,6 +2872,16 @@ class RpaStudioApp {
         this.timeline.addMarker(0.0, 'Intro');
         this.timeline.addMarker(5.0, 'Step 1: Capture');
 
+        this.mediaBin = [
+            {
+                id: 'cardDemoClip',
+                name: 'Welcome Demo.mp4',
+                type: 'video',
+                duration: 10.0,
+                sub: 'RPA Automation Workflow Showcase'
+            }
+        ];
+        this.renderMediaBin();
         this.updateTimelineRuler();
         this.renderTimeline();
         this.renderCaptionList();
@@ -2943,43 +3084,257 @@ class RpaStudioApp {
         const result = await this.recorder.stop();
         if (!result) return;
 
-        const clipTitle = `Screen_${new Date().toLocaleTimeString().replace(/:/g, '-')}`;
+        const dur = Math.max(1.0, result.duration);
+        const clipTitle = `Capture_${new Date().toLocaleTimeString().replace(/:/g, '-')}.webm`;
         this.timeline.addClip({
             title: clipTitle,
             type: 'video',
             trackId: 2,
             startTime: this.playheadTime,
-            duration: Math.max(1.0, result.duration),
+            duration: dur,
             sourceUrl: result.videoUrl,
             telemetry: result.telemetry
         });
 
-        const mediaList = document.getElementById('mediaList');
-        const card = document.createElement('div');
-        card.className = 'asset-card';
-        card.innerHTML = `<div class="asset-title">${clipTitle}</div><div class="asset-sub">Duration: ${result.duration.toFixed(1)}s</div>`;
-        mediaList.prepend(card);
+        // Add to Media Bin & Captures
+        this.addMediaToBin({
+            id: `rec_${Date.now()}`,
+            name: clipTitle,
+            type: 'video',
+            duration: dur,
+            url: result.videoUrl,
+            telemetry: result.telemetry,
+            sub: 'Recorded Screen / Webcam Capture'
+        });
 
         this.renderTimeline();
         this.updateTimelineRuler();
+        this.markDirty(true);
     }
 
     handleFileImport(e) {
         const files = Array.from(e.target.files);
+        if (!files.length) return;
+
         for (const file of files) {
             const url = URL.createObjectURL(file);
             const isAudio = file.type.startsWith('audio');
-            this.timeline.addClip({
-                title: file.name,
-                type: isAudio ? 'audio' : 'video',
-                trackId: isAudio ? 1 : 2,
-                startTime: this.playheadTime,
-                duration: 10.0,
-                sourceUrl: url
-            });
+            const mediaType = isAudio ? 'audio' : 'video';
+
+            // Probe duration
+            const probe = document.createElement(isAudio ? 'audio' : 'video');
+            probe.preload = 'metadata';
+            probe.src = url;
+            probe.onloadedmetadata = () => {
+                const dur = (probe.duration && isFinite(probe.duration)) ? Math.max(1.0, parseFloat(probe.duration.toFixed(2))) : 10.0;
+                this.addMediaToBin({
+                    id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                    name: file.name,
+                    type: mediaType,
+                    duration: dur,
+                    url: url,
+                    sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB • ${mediaType.toUpperCase()}`
+                });
+
+                this.timeline.addClip({
+                    title: file.name,
+                    type: mediaType,
+                    trackId: isAudio ? 1 : 2,
+                    startTime: this.playheadTime,
+                    duration: dur,
+                    sourceUrl: url
+                });
+
+                this.renderTimeline();
+                this.updateTimelineRuler();
+                this.markDirty(true);
+            };
+            probe.onerror = () => {
+                this.addMediaToBin({
+                    id: `file_${Date.now()}`,
+                    name: file.name,
+                    type: mediaType,
+                    duration: 10.0,
+                    url: url,
+                    sub: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                });
+
+                this.timeline.addClip({
+                    title: file.name,
+                    type: mediaType,
+                    trackId: isAudio ? 1 : 2,
+                    startTime: this.playheadTime,
+                    duration: 10.0,
+                    sourceUrl: url
+                });
+
+                this.renderTimeline();
+                this.updateTimelineRuler();
+                this.markDirty(true);
+            };
         }
+        e.target.value = '';
+    }
+
+    addMediaToBin(item) {
+        if (!this.mediaBin) this.mediaBin = [];
+        if (!item.id) item.id = `media_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        this.mediaBin.unshift(item);
+        this.renderMediaBin();
+    }
+
+    renderMediaBin() {
+        const mediaList = document.getElementById('mediaList');
+        if (!mediaList) return;
+        mediaList.innerHTML = '';
+
+        if (!this.mediaBin || this.mediaBin.length === 0) {
+            mediaList.innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 24px 12px; border: 1px dashed var(--border-color); border-radius: 6px;">
+                    <span style="font-size: 28px; display: block; margin-bottom: 6px;">📁</span>
+                    <span>Media Bin is empty.<br>Click <strong>+ Import Media</strong> or record screen to add clips.</span>
+                </div>
+            `;
+            return;
+        }
+
+        for (const item of this.mediaBin) {
+            const card = document.createElement('div');
+            card.className = 'studio-card asset-card';
+            card.draggable = true;
+            card.dataset.toolType = 'media';
+            card.dataset.toolName = item.name;
+            card.dataset.mediaId = item.id;
+
+            const isVideo = item.type !== 'audio';
+            const icon = isVideo ? '🎬' : '🎵';
+            const durStr = item.duration ? `${item.duration.toFixed(1)}s` : '10.0s';
+            const badgeText = isVideo ? `${durStr} • 1080p` : `${durStr} • Audio`;
+
+            card.innerHTML = `
+                <div class="studio-card-preview" style="background: linear-gradient(135deg, ${isVideo ? '#1e293b, #0f172a' : '#064e3b, #022c22'});">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                        <span style="font-size: 24px;">${icon}</span>
+                        <span style="font-size: 9.5px; font-weight: 700; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 1px 6px; border-radius: 3px;">${badgeText}</span>
+                    </div>
+                </div>
+                <div class="studio-card-info">
+                    <div class="studio-card-title" title="${item.name}">${item.name}</div>
+                    <div class="studio-card-desc">${item.sub || (isVideo ? 'Video Media Asset' : 'Audio Track Asset')}</div>
+                    <span class="studio-card-badge">${isVideo ? 'VIDEO CLIP' : 'AUDIO TRACK'}</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
+                    <div class="studio-card-apply-badge" data-action="add-to-timeline" title="Add to timeline at playhead">+ Add</div>
+                    <button type="button" class="btn-bin-del" data-action="del-bin-item" style="background: transparent; border: none; color: #ef4444; font-size: 11px; cursor: pointer; padding: 2px 4px;" title="Remove from Bin">🗑️</button>
+                </div>
+            `;
+
+            card.ondragstart = (e) => {
+                const data = {
+                    toolType: 'media',
+                    toolName: item.name,
+                    mediaId: item.id,
+                    url: item.url,
+                    duration: item.duration || 10.0,
+                    mediaType: item.type || 'video'
+                };
+                e.dataTransfer.setData('text/plain', JSON.stringify(data));
+                e.dataTransfer.effectAllowed = 'copy';
+                card.classList.add('dragging-card');
+            };
+            card.ondragend = () => card.classList.remove('dragging-card');
+
+            card.onclick = (e) => {
+                if (e.target.closest('[data-action="del-bin-item"]')) {
+                    e.stopPropagation();
+                    this.mediaBin = this.mediaBin.filter(m => m.id !== item.id);
+                    this.renderMediaBin();
+                    return;
+                }
+                this.addMediaClipToTimeline(item);
+            };
+
+            mediaList.appendChild(card);
+        }
+    }
+
+    addMediaClipToTimeline(item) {
+        const isAudio = item.type === 'audio';
+        const newClip = {
+            title: item.name,
+            type: isAudio ? 'audio' : 'video',
+            trackId: isAudio ? 1 : 2,
+            startTime: this.playheadTime,
+            duration: item.duration || 10.0,
+            sourceUrl: item.url || '',
+            telemetry: item.telemetry || null,
+            scale: 1.0,
+            scaleX: 1.0,
+            scaleY: 1.0,
+            xOffset: 0,
+            yOffset: 0,
+            aspectRatioLocked: true
+        };
+        this.timeline.addClip(newClip);
+        const added = this.timeline.clips[this.timeline.clips.length - 1];
+        this.timeline.selectedClipId = added.id;
+        this.timeline.saveSnapshot();
         this.renderTimeline();
         this.updateTimelineRuler();
+        this.renderProperties(added);
+        this.compositor.renderFrame(this.timeline, this.playheadTime);
+        this.markDirty(true);
+    }
+
+    copySelectedClip() {
+        if (!this.timeline.selectedClipId) {
+            alert('Please select a clip on the timeline first to copy.');
+            return;
+        }
+        const clip = this.timeline.getClip(this.timeline.selectedClipId);
+        if (!clip) return;
+        const { element, _previewEl, cachedImage, audioBuffer, video, sourceElement, mediaStream, ...clipData } = clip;
+        this.clipboardClip = JSON.parse(JSON.stringify(clipData));
+        const btn = document.getElementById('btnCopyClip');
+        if (btn) {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<span>✅</span> Copied!';
+            setTimeout(() => { btn.innerHTML = orig; }, 1000);
+        }
+    }
+
+    pasteClip() {
+        if (!this.clipboardClip) {
+            alert('No clip copied yet. Select a clip on the timeline and press Copy (Ctrl+C).');
+            return;
+        }
+        const newClip = JSON.parse(JSON.stringify(this.clipboardClip));
+        newClip.id = `clip_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        newClip.startTime = this.playheadTime;
+        if (newClip.title && !newClip.title.includes('(Copy)')) {
+            newClip.title = `${newClip.title} (Copy)`;
+        }
+        this.timeline.addClip(newClip);
+        this.timeline.selectedClipId = newClip.id;
+        this.timeline.saveSnapshot();
+        this.renderTimeline();
+        this.updateTimelineRuler();
+        this.renderProperties(newClip);
+        this.compositor.renderFrame(this.timeline, this.playheadTime);
+        this.markDirty(true);
+        const btn = document.getElementById('btnPasteClip');
+        if (btn) {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<span>✅</span> Pasted!';
+            setTimeout(() => { btn.innerHTML = orig; }, 1000);
+        }
+    }
+
+    markDirty(dirty = true) {
+        this.isDirty = Boolean(dirty);
+        if (window.rpaNative && window.rpaNative.setDirtyState) {
+            window.rpaNative.setDirtyState(this.isDirty);
+        }
     }
 
     splitSelectedClip() {
@@ -3715,7 +4070,14 @@ class RpaStudioApp {
         const chkInv = document.getElementById('chkInvertInspector');
         if (chkInv) chkInv.checked = !!fx.invert;
         const chkDrop = document.getElementById('chkDropShadowInspector');
-        if (chkDrop) chkDrop.checked = fx.dropShadow !== undefined ? fx.dropShadow : true;
+        const hasDrop = fx.dropShadow !== undefined ? fx.dropShadow : true;
+        if (chkDrop) chkDrop.checked = hasDrop;
+        const grpDrop = document.getElementById('grpDropShadowParams');
+        if (grpDrop) grpDrop.style.display = hasDrop ? 'grid' : 'none';
+        const dPower = fx.dropShadowPower !== undefined ? fx.dropShadowPower : (selectedClip.dropShadowPower !== undefined ? selectedClip.dropShadowPower : 2);
+        const dBlur = fx.dropShadowBlur !== undefined ? fx.dropShadowBlur : (selectedClip.dropShadowBlur !== undefined ? selectedClip.dropShadowBlur : 35);
+        setFxRange('propDropShadowPower', 'lblDropShadowPower', dPower, 'x');
+        setFxRange('propDropShadowBlur', 'lblDropShadowBlur', dBlur, 'px');
 
         const chkChroma = document.getElementById('chkChromaKeyInspector');
         if (chkChroma) chkChroma.checked = !!fx.chromaKey;
@@ -3893,6 +4255,18 @@ class RpaStudioApp {
                 return;
             }
 
+            // Copy / Paste Shortcuts
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+                e.preventDefault();
+                this.copySelectedClip();
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+                e.preventDefault();
+                this.pasteClip();
+                return;
+            }
+
             // Project Shortcuts
             if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O')) {
                 e.preventDefault();
@@ -3985,15 +4359,18 @@ class RpaStudioApp {
         alert(`Successfully applied transition (${transIn} / ${transOut}, ${dur.toFixed(1)}s) to all ${count} clips on the timeline!`);
     }
 
-    async saveProject() {
+    async saveProject(isAutoPrompt = false) {
         const defaultName = this.compositor.projectSettings?.name || 'RPA_Workflow_Video';
-        const title = prompt('Project Name:', defaultName);
-        if (title === null) return; // User pressed Cancel
-        const cleanTitle = (title || 'Untitled').trim();
+        let cleanTitle = defaultName;
+        if (!isAutoPrompt) {
+            const title = prompt('Project Name:', defaultName);
+            if (title === null) return; // User pressed Cancel
+            cleanTitle = (title || 'Untitled').trim();
+        }
 
         // Sanitize clips: strip DOM references, preview elements, and non-serializable objects
         const sanitizedClips = (this.timeline.clips || []).map(clip => {
-            const { element, _previewEl, cachedImage, audioBuffer, video, ...safeClip } = clip;
+            const { element, _previewEl, cachedImage, audioBuffer, video, sourceElement, mediaStream, ...safeClip } = clip;
             return safeClip;
         });
 
@@ -4007,22 +4384,30 @@ class RpaStudioApp {
             projectSettings: this.compositor.projectSettings || {}
         };
 
+        const safeJson = JSON.stringify(projectData, (key, value) => {
+            if (key === 'element' || key === '_previewEl' || key === 'cachedImage' || key === 'audioBuffer' || key === 'video' || key === 'sourceElement' || key === 'mediaStream') {
+                return undefined;
+            }
+            return value;
+        }, 2);
+
         try {
             const res = await fetch('/api/projects/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(projectData)
+                body: safeJson
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                alert(`Project successfully saved!\nLocation: ${data.path || data.id}`);
+                this.markDirty(false);
+                if (!isAutoPrompt) alert(`Project successfully saved!\nLocation: ${data.path || data.id}`);
             } else {
                 throw new Error(data.error || 'Server error saving project');
             }
         } catch (err) {
             console.error('[Save Project Error]', err);
             // Safe offline fallback: direct JSON download
-            const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
+            const blob = new Blob([safeJson], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             const safeFileName = cleanTitle.replace(/[^a-zA-Z0-9_-]/g, '_') || 'project';
@@ -4031,7 +4416,8 @@ class RpaStudioApp {
             a.click();
             document.body.removeChild(a);
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-            alert(`Project saved directly to your Downloads folder as "${safeFileName}.rpavideo".\nNotice: ${err.message}`);
+            this.markDirty(false);
+            if (!isAutoPrompt) alert(`Project saved directly to your Downloads folder as "${safeFileName}.rpavideo".\nNotice: ${err.message}`);
         }
     }
 
@@ -4065,7 +4451,7 @@ class RpaStudioApp {
         btnExec.innerText = '⏳ Rendering...';
 
         try {
-            await window.RpaExporter.exportTimeline(
+            const exportResult = await window.RpaExporter.exportTimeline(
                 this.timeline,
                 this.compositor,
                 { width, height, fps, bitrate, format },
@@ -4074,7 +4460,25 @@ class RpaStudioApp {
                     statusLabel.innerText = `Rendering ${width}x${height} (${fps}fps): ${Math.floor(pct)}%`;
                 }
             );
-            alert(`Full ${width}x${height} video successfully rendered and downloaded!`);
+
+            const chosenFolder = document.getElementById('txtExportOutputFolder')?.value?.trim();
+            if (window.rpaNative && window.rpaNative.saveExportedFile && exportResult && exportResult.blob) {
+                const arrayBuffer = await exportResult.blob.arrayBuffer();
+                const ext = format === 'mp4' ? 'mp4' : 'webm';
+                const filename = `RPA_Video_${width}x${height}_${Date.now()}.${ext}`;
+                const saveResult = await window.rpaNative.saveExportedFile({
+                    buffer: arrayBuffer,
+                    filename,
+                    targetDirectory: chosenFolder || null
+                });
+                if (saveResult && saveResult.success) {
+                    alert(`Full ${width}x${height} video successfully rendered and saved to:\n${saveResult.path}`);
+                } else {
+                    alert(`Full ${width}x${height} video rendered!`);
+                }
+            } else {
+                alert(`Full ${width}x${height} video successfully rendered and downloaded!`);
+            }
             document.getElementById('exportModal').classList.add('hidden');
         } catch (err) {
             alert(`Export failed: ${err.message}`);
@@ -4193,28 +4597,32 @@ class RpaStudioApp {
             });
             return;
         } else if (toolType === 'media') {
+            const mediaItem = (this.mediaBin || []).find(m => m.name === toolName || m.id === toolName);
+            const isAudio = mediaItem ? mediaItem.type === 'audio' : false;
             this.timeline.addClip({
-                title: toolName || 'Demo Clip.mp4',
-                type: 'video',
-                trackId: 1,
+                title: mediaItem ? mediaItem.name : (toolName || 'Demo Clip.mp4'),
+                type: isAudio ? 'audio' : 'video',
+                trackId: isAudio ? 1 : 2,
                 startTime: this.playheadTime,
-                duration: 10.0,
+                duration: mediaItem?.duration || 10.0,
+                sourceUrl: mediaItem?.url || '',
+                telemetry: mediaItem?.telemetry || [
+                    { time: 1.0, x: 0.25, y: 0.35, type: 'mousemove' },
+                    { time: 2.2, x: 0.50, y: 0.50, type: 'mousedown' },
+                    { time: 4.5, x: 0.75, y: 0.40, type: 'mousemove' },
+                    { time: 6.0, x: 0.30, y: 0.60, type: 'mousedown' }
+                ],
                 scale: 1.0,
                 scaleX: 1.0,
                 scaleY: 1.0,
                 xOffset: 0,
                 yOffset: 0,
-                aspectRatioLocked: true,
-                telemetry: [
-                    { time: 1.0, x: 0.25, y: 0.35, type: 'mousemove' },
-                    { time: 2.2, x: 0.50, y: 0.50, type: 'mousedown' },
-                    { time: 4.5, x: 0.75, y: 0.40, type: 'mousemove' },
-                    { time: 6.0, x: 0.30, y: 0.60, type: 'mousedown' }
-                ]
+                aspectRatioLocked: true
             });
             const added = this.timeline.clips[this.timeline.clips.length - 1];
             this.timeline.selectedClipId = added.id;
             this.renderProperties(added);
+            this.markDirty(true);
         } else if (targetClip) {
             this.handleToolDropOnClip(null, targetClip.id, { toolType, toolName });
             return;
@@ -4277,27 +4685,32 @@ class RpaStudioApp {
             });
             return;
         } else if (data.toolType === 'media') {
+            const mediaItem = (this.mediaBin || []).find(m => m.id === data.mediaId || m.name === data.toolName);
+            const isAudio = (data.mediaType === 'audio') || (mediaItem && mediaItem.type === 'audio');
             this.timeline.addClip({
-                title: data.toolName || 'Demo Clip.mp4',
-                type: 'video',
+                title: data.toolName || (mediaItem ? mediaItem.name : 'Media Clip'),
+                type: isAudio ? 'audio' : 'video',
                 trackId,
                 startTime: dropTime,
-                duration: 10.0,
+                duration: data.duration || mediaItem?.duration || 10.0,
+                sourceUrl: data.url || mediaItem?.url || '',
+                telemetry: mediaItem?.telemetry || [
+                    { time: 1.0, x: 0.25, y: 0.35, type: 'mousemove' },
+                    { time: 2.2, x: 0.50, y: 0.50, type: 'mousedown' },
+                    { time: 4.5, x: 0.75, y: 0.40, type: 'mousemove' },
+                    { time: 6.0, x: 0.30, y: 0.60, type: 'mousedown' }
+                ],
                 scale: 1.0,
                 scaleX: 1.0,
                 scaleY: 1.0,
                 xOffset: 0,
                 yOffset: 0,
-                aspectRatioLocked: true,
-                telemetry: [
-                    { time: 1.0, x: 0.25, y: 0.35, type: 'mousemove' },
-                    { time: 2.2, x: 0.50, y: 0.50, type: 'mousedown' },
-                    { time: 4.5, x: 0.75, y: 0.40, type: 'mousemove' },
-                    { time: 6.0, x: 0.30, y: 0.60, type: 'mousedown' }
-                ]
+                aspectRatioLocked: true
             });
             const added = this.timeline.clips[this.timeline.clips.length - 1];
             this.timeline.selectedClipId = added.id;
+            this.renderProperties(added);
+            this.markDirty(true);
             this.renderProperties(added);
         } else {
             // Transitions, behaviors, effects, or audio-fx dropped on track
@@ -5533,9 +5946,11 @@ class RpaStudioApp {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
+            const panX = this.compositor.panOffset?.x || 0;
+            const panY = this.compositor.panOffset?.y || 0;
             return {
-                x: (e.clientX - rect.left) * scaleX,
-                y: (e.clientY - rect.top) * scaleY
+                x: (e.clientX - rect.left) * scaleX - panX,
+                y: (e.clientY - rect.top) * scaleY - panY
             };
         };
 
@@ -5673,10 +6088,15 @@ class RpaStudioApp {
             if (this.compositor.activeCanvasTool === 'crop' && this.timeline.selectedClipId) {
                 const selClip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (selClip) {
-                    isInteracting = true;
-                    interactionMode = 'crop';
-                    if (!selClip.crop) selClip.crop = { top: 0, right: 0, bottom: 0, left: 0 };
-                    startClipState = { ...selClip.crop };
+                    const handle = this.compositor.getCropHandleAtPoint(selClip, pt, canvas.width, canvas.height);
+                    if (handle) {
+                        isInteracting = true;
+                        interactionMode = 'crop';
+                        resizeHandle = handle;
+                        if (!selClip.crop) selClip.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+                        startClipState = { ...selClip.crop };
+                        return;
+                    }
                 }
             }
         });
@@ -5691,17 +6111,44 @@ class RpaStudioApp {
             const deltaY = pt.y - startCanvasPos.y;
 
             if (interactionMode === 'pan') {
-                const container = document.getElementById('canvasContainer');
-                if (container) {
-                    container.scrollLeft -= (e.clientX - startClientPos.x);
-                    container.scrollTop -= (e.clientY - startClientPos.y);
-                    startClientPos = { x: e.clientX, y: e.clientY };
-                }
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const deltaClientX = (e.clientX - startClientPos.x) * scaleX;
+                const deltaClientY = (e.clientY - startClientPos.y) * scaleY;
+                if (!this.compositor.panOffset) this.compositor.panOffset = { x: 0, y: 0 };
+                this.compositor.panOffset.x = Math.round(startPanOffset.x + deltaClientX);
+                this.compositor.panOffset.y = Math.round(startPanOffset.y + deltaClientY);
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
                 return;
             }
 
             const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
             if (!selClip) return;
+
+            if (interactionMode === 'crop') {
+                if (!selClip.crop) selClip.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+                const scaleX = selClip.scaleX !== undefined ? selClip.scaleX : (selClip.scale || 1.0);
+                const scaleY = selClip.scaleY !== undefined ? selClip.scaleY : (selClip.scale || 1.0);
+                const ratioX = 1 / Math.max(0.01, scaleX);
+                const ratioY = 1 / Math.max(0.01, scaleY);
+
+                if (resizeHandle === 'left' || resizeHandle === 'nw' || resizeHandle === 'sw') {
+                    selClip.crop.left = Math.max(0, Math.round(startClipState.left + deltaX * ratioX));
+                }
+                if (resizeHandle === 'right' || resizeHandle === 'ne' || resizeHandle === 'se') {
+                    selClip.crop.right = Math.max(0, Math.round(startClipState.right - deltaX * ratioX));
+                }
+                if (resizeHandle === 'top' || resizeHandle === 'nw' || resizeHandle === 'ne') {
+                    selClip.crop.top = Math.max(0, Math.round(startClipState.top + deltaY * ratioY));
+                }
+                if (resizeHandle === 'bottom' || resizeHandle === 'sw' || resizeHandle === 'se') {
+                    selClip.crop.bottom = Math.max(0, Math.round(startClipState.bottom - deltaY * ratioY));
+                }
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                this.markDirty(true);
+                return;
+            }
 
             if (interactionMode === 'translate') {
                 selClip.xOffset = Math.round(startClipState.xOffset + deltaX);
@@ -5777,8 +6224,9 @@ class RpaStudioApp {
                 const wasTranslating = interactionMode === 'translate';
                 isInteracting = false;
                 interactionMode = null;
-                canvas.style.cursor = 'default';
+                canvas.style.cursor = this.compositor.activeCanvasTool === 'hand' ? 'grab' : (this.compositor.activeCanvasTool === 'crop' ? 'crosshair' : 'default');
                 this.timeline.saveSnapshot();
+                this.markDirty(true);
 
                 // If user clicked without dragging, make annotation text editable directly in the main player
                 if (!hasMoved && wasTranslating && this.timeline.selectedClipId) {
@@ -5791,6 +6239,11 @@ class RpaStudioApp {
         };
 
         canvas.addEventListener('dblclick', (e) => {
+            if (this.compositor.activeCanvasTool === 'hand') {
+                this.compositor.panOffset = { x: 0, y: 0 };
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                return;
+            }
             const pt = getCanvasPoint(e);
             const activeClips = this.timeline.clips
                 .filter(c => this.playheadTime >= c.startTime && this.playheadTime <= (c.startTime + c.duration))

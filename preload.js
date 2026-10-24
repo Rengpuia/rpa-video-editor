@@ -8,5 +8,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('rpaNative', {
     isDesktop: true,
     platform: process.platform,
-    version: '2.0.0'
+    version: '2.0.0',
+    selectDirectory: () => ipcRenderer.invoke('dialog:select-directory'),
+    saveExportedFile: (data) => ipcRenderer.invoke('export:save-file', data),
+    setDirtyState: (isDirty) => ipcRenderer.send('app:set-dirty', isDirty),
+    onPromptSaveBeforeClose: (callback) => ipcRenderer.on('app:prompt-save-before-close', callback),
+    confirmSaveComplete: (proceedToClose) => ipcRenderer.send('app:save-completed', proceedToClose)
 });

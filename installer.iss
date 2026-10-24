@@ -32,14 +32,21 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ChangesAssociations=yes
 
+; In-Place Update & Upgradeable Configuration
+UsePreviousAppDir=yes
+DisableDirPage=auto
+CloseApplications=yes
+RestartApplications=no
+ArchitecturesInstallIn64BitMode=x64compatible
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "node_modules\*,exports\*,*.tmp,.git\*"
+Source: "*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "node_modules\*,exports\*,*.tmp,.git\*,projects\*"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\client\favicon.ico"; WorkingDir: "{app}"

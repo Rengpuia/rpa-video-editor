@@ -54,7 +54,7 @@ jobs:
       - name: Build Electron Standalone Desktop Executable
         run: |
           npm install --save-dev electron electron-builder
-          npx electron-builder --win portable --publish never
+          npx electron-builder --win nsis portable --publish never
         continue-on-error: true
 
       - name: Verify Generated Artifacts
@@ -75,6 +75,7 @@ jobs:
         with:
           files: |
             exports/RPA_Video_Editor_Setup_v2.0.0.exe
+            exports/RPA-Video-Editor-v2.0.0-Setup.exe
             exports/RPA_Video_Editor_v2.0.0_Portable.zip
             exports/RPA-Video-Editor-v2.0.0-Portable.exe
           name: RPA Video Editor ${{ github.ref_name }} (Offline Desktop Edition)

@@ -339,8 +339,15 @@ class RpaCompositor {
 
     renderFrame(timeline, time, isPlaying = false) {
         const { width, height } = this.canvas;
-        this.ctx.fillStyle = this.projectSettings.backgroundColor || '#0f1115';
-        this.ctx.fillRect(0, 0, width, height);
+        const bg = this.projectSettings.backgroundColor;
+        if (!bg || bg === 'transparent') {
+            this.ctx.clearRect(0, 0, width, height);
+            if (this.canvas) this.canvas.classList.add('canvas-transparent');
+        } else {
+            if (this.canvas) this.canvas.classList.remove('canvas-transparent');
+            this.ctx.fillStyle = bg;
+            this.ctx.fillRect(0, 0, width, height);
+        }
 
         // Find visible tracks
         const visibleTrackIds = new Set(
@@ -354,8 +361,11 @@ class RpaCompositor {
 
         let activeCursorData = null;
 
-        // Apply Zoom-n-Pan Transform
+        // Apply Pan & Zoom Transform
         this.ctx.save();
+        if (this.panOffset && (this.panOffset.x !== 0 || this.panOffset.y !== 0)) {
+            this.ctx.translate(this.panOffset.x, this.panOffset.y);
+        }
         if (this.zoom.scale > 1.0) {
             const cx = width * this.zoom.focusX;
             const cy = height * this.zoom.focusY;
@@ -469,10 +479,17 @@ class RpaCompositor {
                 this.applyTransitionClipping(clip, relTime, clip.duration, drawX, drawY, drawW, drawH);
             }
 
-            // Drop shadow
+            // Drop shadow with enhanced power, blur and depth
             if (fx.dropShadow) {
-                this.ctx.shadowColor = 'rgba(0,0,0,0.65)';
-                this.ctx.shadowBlur = 24;
+                const power = fx.dropShadowPower !== undefined ? fx.dropShadowPower : (clip.dropShadowPower !== undefined ? clip.dropShadowPower : 2);
+                const blur = (fx.dropShadowBlur !== undefined ? fx.dropShadowBlur : (clip.dropShadowBlur !== undefined ? clip.dropShadowBlur : 35)) * (power >= 2 ? 1.4 : 1.0);
+                const offY = (fx.dropShadowOffsetY !== undefined ? fx.dropShadowOffsetY : 14) * (power >= 2 ? 1.3 : 1.0);
+                const offX = fx.dropShadowOffsetX || 0;
+                const op = (fx.dropShadowOpacity !== undefined ? fx.dropShadowOpacity : 85) / 100;
+                this.ctx.shadowColor = `rgba(0,0,0,${Math.min(1.0, op)})`;
+                this.ctx.shadowBlur = Math.round(blur);
+                this.ctx.shadowOffsetX = Math.round(offX);
+                this.ctx.shadowOffsetY = Math.round(offY);
             }
 
             // Rounded corners
@@ -969,10 +986,10 @@ class RpaCompositor {
         const outDur = (bp.out && bp.out.duration !== undefined) ? bp.out.duration : 0.8;
         const timeLeft = duration - relTime;
 
-        const projW = (this.projectWidth || (this.canvas ? this.canvas.width : 1920));
-        const projH = (this.projectHeight || (this.canvas ? this.canvas.height : 1080));
-        const edgeDistY = projH * 0.5 + 400;
-        const edgeDistX = projW * 0.5 + 500;
+        const projW = (this.projectSettings?.width || this.projectWidth || (this.canvas ? this.canvas.width : 1920));
+        const projH = (this.projectSettings?.height || this.projectHeight || (this.canvas ? this.canvas.height : 1080));
+        const edgeDistY = projH + 500;
+        const edgeDistX = projW + 500;
 
         // Phase 1: IN (Entrance)
         if (relTime < inDur) {
@@ -1152,10 +1169,10 @@ class RpaCompositor {
         const waveDelay = (bp.waveDelay !== undefined ? bp.waveDelay : 0.12);
         const unitOffset = (bp.textUnit === 'all' ? 0 : (index * waveDelay));
 
-        const projW = (this.projectWidth || (this.canvas ? this.canvas.width : 1920));
-        const projH = (this.projectHeight || (this.canvas ? this.canvas.height : 1080));
-        const edgeDistY = projH * 0.5 + 400;
-        const edgeDistX = projW * 0.5 + 500;
+        const projW = (this.projectSettings?.width || this.projectWidth || (this.canvas ? this.canvas.width : 1920));
+        const projH = (this.projectSettings?.height || this.projectHeight || (this.canvas ? this.canvas.height : 1080));
+        const edgeDistY = projH + 500;
+        const edgeDistX = projW + 500;
 
         // Phase 1: IN (Entrance) with wave progression
         const glyphInStart = unitOffset * 0.35;
@@ -1408,8 +1425,8 @@ class RpaCompositor {
 
         // 3. Slide & Drift (Glide Entrance + Hover Glide)
         if (behavior === 'slide' || behavior === 'slide-drift') {
-            const projH = (this.projectHeight || (this.canvas ? this.canvas.height : 1080));
-            const edgeDistY = projH * 0.5 + 400;
+            const projH = (this.projectSettings?.height || this.projectHeight || (this.canvas ? this.canvas.height : 1080));
+            const edgeDistY = projH + 500;
             let y = 0;
             let o = 1.0;
             if (relTime < 0.6) {
@@ -1519,16 +1536,18 @@ class RpaCompositor {
 
         // 13. Slide In & Spring Bounce (Fast slide with elastic multi-bounce settle)
         if (behavior === 'slide-bounce') {
+            const projW = (this.projectSettings?.width || this.projectWidth || (this.canvas ? this.canvas.width : 1920));
+            const edgeDist = projW + 500;
             let x = 0;
             let o = 1.0;
             if (relTime < 0.9) {
                 const t = relTime / 0.9;
                 const decay = Math.exp(-t * 5.0);
-                x = Math.cos(t * Math.PI * 4.5) * decay * 400;
+                x = Math.cos(t * Math.PI * 4.5) * decay * edgeDist;
                 o = Math.min(1.0, t * 2.0);
             } else if (duration - relTime < 0.4) {
                 const t = (duration - relTime) / 0.4;
-                x = (1 - t) * -400;
+                x = (1 - t) * -edgeDist;
                 o = t;
             }
             return { x, y: 0, scale: 1.0, rotation: 0, opacity: Math.max(0, Math.min(1, o)) };
@@ -3514,6 +3533,34 @@ class RpaCompositor {
             this.ctx.strokeRect(hx - 5, hy - 5, 10, 10);
         });
         this.ctx.restore();
+    }
+
+    getCropHandleAtPoint(clip, pt, width, height) {
+        if (!clip) return null;
+        const scaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
+        const scaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
+        const drawW = width * scaleX;
+        const drawH = height * scaleY;
+        const drawX = (width - drawW) / 2 + (clip.xOffset || 0);
+        const drawY = (height - drawH) / 2 + (clip.yOffset || 0);
+
+        const handles = [
+            { type: 'top', x: drawX + drawW / 2, y: drawY },
+            { type: 'bottom', x: drawX + drawW / 2, y: drawY + drawH },
+            { type: 'left', x: drawX, y: drawY + drawH / 2 },
+            { type: 'right', x: drawX + drawW, y: drawY + drawH / 2 },
+            { type: 'nw', x: drawX, y: drawY },
+            { type: 'ne', x: drawX + drawW, y: drawY },
+            { type: 'sw', x: drawX, y: drawY + drawH },
+            { type: 'se', x: drawX + drawW, y: drawY + drawH }
+        ];
+
+        for (const h of handles) {
+            if (Math.hypot(pt.x - h.x, pt.y - h.y) <= 18) {
+                return h.type;
+            }
+        }
+        return null;
     }
     interpolateTelemetry(telemetry, relTime) {
         if (!telemetry || telemetry.length === 0) return null;

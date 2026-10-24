@@ -2440,3 +2440,44 @@ kbd {
     padding-bottom: 0;
     border-bottom: none;
 }
+
+/* ==========================================================================
+   SLEEK STUDIO DARK SCROLLBARS (Matching UI Theme)
+   ========================================================================== */
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+::-webkit-scrollbar-track {
+    background: #0f1115;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: #252a36;
+    border-radius: 4px;
+    border: 1px solid #161922;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6;
+}
+::-webkit-scrollbar-corner {
+    background: #0f1115;
+}
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #252a36 #0f1115;
+}
+
+/* ==========================================================================
+   TRANSPARENT CANVAS PREVIEW (Alpha Checkerboard Pattern)
+   ========================================================================== */
+canvas#previewCanvas.canvas-transparent {
+    background-color: #171922;
+    background-image: 
+        linear-gradient(45deg, #101218 25%, transparent 25%), 
+        linear-gradient(-45deg, #101218 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #101218 75%), 
+        linear-gradient(-45deg, transparent 75%, #101218 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}

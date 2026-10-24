@@ -7,8 +7,9 @@
  * canvas, integrated local media server, and direct screen/webcam recording.
  */
 
-const { app, BrowserWindow, session, desktopCapturer, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, session, desktopCapturer, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // Ensure offline desktop environment
 process.env.OFFLINE_DESKTOP = '1';
@@ -17,6 +18,50 @@ process.env.OFFLINE_DESKTOP = '1';
 const { server, start, PORT, HOST } = require('./server/server');
 
 let mainWindow = null;
+let isProjectDirty = false;
+let isQuittingForced = false;
+
+// IPC Handlers: Directory Picker
+ipcMain.handle('dialog:select-directory', async () => {
+    if (!mainWindow) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Video Output Folder',
+        properties: ['openDirectory', 'createDirectory']
+    });
+    if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+        return result.filePaths[0];
+    }
+    return null;
+});
+
+// IPC Handlers: Save Exported File Directly to Disk
+ipcMain.handle('export:save-file', async (event, { buffer, filename, targetDirectory }) => {
+    try {
+        const destDir = (targetDirectory && fs.existsSync(targetDirectory)) 
+            ? targetDirectory 
+            : path.join(app.getPath('videos'), 'RPA Video Editor');
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+        const filePath = path.join(destDir, filename || `Export_${Date.now()}.webm`);
+        fs.writeFileSync(filePath, Buffer.from(buffer));
+        return { success: true, path: filePath };
+    } catch (err) {
+        console.error('[Export Save Error]', err);
+        return { success: false, error: err.message };
+    }
+});
+
+// IPC Handlers: Unsaved State & Save Completion
+ipcMain.on('app:set-dirty', (event, dirty) => {
+    isProjectDirty = Boolean(dirty);
+});
+
+ipcMain.on('app:save-completed', (event, proceedToClose) => {
+    isProjectDirty = false;
+    if (proceedToClose && mainWindow) {
+        isQuittingForced = true;
+        mainWindow.close();
+    }
+});
 
 async function createWindow() {
     // Start internal server
@@ -79,6 +124,27 @@ async function createWindow() {
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
         mainWindow.focus();
+    });
+
+    mainWindow.on('close', (e) => {
+        if (isProjectDirty && !isQuittingForced) {
+            e.preventDefault();
+            const choice = dialog.showMessageBoxSync(mainWindow, {
+                type: 'question',
+                buttons: ['Save Project', "Don't Save", 'Cancel'],
+                defaultId: 0,
+                cancelId: 2,
+                title: 'Unsaved Project Changes',
+                message: 'You have unsaved changes in your project.\nDo you want to save before closing?'
+            });
+            if (choice === 0) { // Save Project
+                mainWindow.webContents.send('app:prompt-save-before-close');
+            } else if (choice === 1) { // Don't Save
+                isQuittingForced = true;
+                mainWindow.close();
+            }
+            // If Cancel (choice === 2), event was prevented so stays open!
+        }
     });
 
     mainWindow.on('closed', () => {
