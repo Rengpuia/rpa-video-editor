@@ -77,6 +77,10 @@
                     <span class="tab-icon">💬</span>
                     <span class="tab-label">Annotations</span>
                 </div>
+                <div class="sidebar-tab" data-tab="magnify" title="Zoom / Magnify / Highlight Lenses">
+                    <span class="tab-icon">🔍</span>
+                    <span class="tab-label">Magnify</span>
+                </div>
                 <div class="sidebar-tab" data-tab="transitions" title="Transitions & Wipes">
                     <span class="tab-icon">🔀</span>
                     <span class="tab-label">Transitions</span>
@@ -135,6 +139,7 @@
                     <div class="tool-filter-bar" data-target="tabAnnotations">
                         <button class="tool-filter-pill active" data-category="all">All</button>
                         <button class="tool-filter-pill" data-category="callouts">Callouts</button>
+                        <button class="tool-filter-pill" data-category="magnify">🔍 Magnify</button>
                         <button class="tool-filter-pill" data-category="arrows">Arrows</button>
                         <button class="tool-filter-pill" data-category="shapes">Shapes</button>
                         <button class="tool-filter-pill" data-category="blur">Blur & Focus</button>
@@ -366,6 +371,220 @@
                                 <div class="studio-card-title">Keystroke Badge</div>
                                 <div class="studio-card-desc">3D keyboard shortcut key</div>
                                 <span class="studio-card-badge">Keystroke</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zoom, Magnify & Highlight Tab -->
+                <div id="tabMagnify" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.5px;">ZOOM / MAGNIFY / HIGHLIGHT</span>
+                        <span style="font-size: 10px; color: var(--accent-color); font-weight: 600;">Hardware Accelerated</span>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;">Zoom into UI details, code, or charts with custom geometric lenses, spotlight dimming, and motion tracking.</p>
+
+                    <div class="tool-filter-bar" data-target="tabMagnify">
+                        <button class="tool-filter-pill active" data-category="all">All</button>
+                        <button class="tool-filter-pill" data-category="geometric">Geometric</button>
+                        <button class="tool-filter-pill" data-category="polygons">Polygons</button>
+                        <button class="tool-filter-pill" data-category="stylized">Stylized</button>
+                        <button class="tool-filter-pill" data-category="focus">Spotlight & Blur</button>
+                    </div>
+
+                    <div class="studio-tools-grid">
+                        <!-- 1. Circle Magnify Lens -->
+                        <div class="studio-card asset-card" draggable="true" data-category="geometric" data-tool-type="callout" data-tool-name="Circle Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <circle cx="24" cy="24" r="18" fill="rgba(0, 240, 255, 0.12)" stroke="#00f0ff" stroke-width="2.5" filter="drop-shadow(0 0 4px #00f0ff)"/>
+                                    <circle cx="24" cy="24" r="13" fill="none" stroke="rgba(255, 255, 255, 0.3)" stroke-width="1" stroke-dasharray="2,2"/>
+                                    <text x="24" y="27" text-anchor="middle" font-size="10" font-weight="bold" fill="#00f0ff" font-family="sans-serif">2.0x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Circle Lens</div>
+                                <div class="studio-card-desc">Circular zoom lens with neon cyan ring</div>
+                                <span class="studio-card-badge">Magnify</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 2. Ellipse Panoramic Lens -->
+                        <div class="studio-card asset-card" draggable="true" data-category="geometric" data-tool-type="callout" data-tool-name="Ellipse Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <ellipse cx="24" cy="24" rx="21" ry="14" fill="rgba(59, 130, 246, 0.15)" stroke="#3b82f6" stroke-width="2.5" filter="drop-shadow(0 0 4px #3b82f6)"/>
+                                    <text x="24" y="27" text-anchor="middle" font-size="9" font-weight="bold" fill="#60a5fa" font-family="sans-serif">2.0x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Ellipse Lens</div>
+                                <div class="studio-card-desc">Wide aspect panoramic magnifier</div>
+                                <span class="studio-card-badge">Magnify</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 3. Cross Tactical Reticle -->
+                        <div class="studio-card asset-card" draggable="true" data-category="geometric" data-tool-type="callout" data-tool-name="Cross Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <path d="M19,6 H29 V19 H42 V29 H29 V42 H19 V29 H6 V19 H19 Z" fill="rgba(16, 185, 129, 0.18)" stroke="#10b981" stroke-width="2" filter="drop-shadow(0 0 4px #10b981)"/>
+                                    <circle cx="24" cy="24" r="3" fill="#10b981"/>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Cross Reticle</div>
+                                <div class="studio-card-desc">12-point tactical crosshair zoom</div>
+                                <span class="studio-card-badge">Cross</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 4. Pentagon Magnify Lens -->
+                        <div class="studio-card asset-card" draggable="true" data-category="polygons" data-tool-type="callout" data-tool-name="Pentagon Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <polygon points="24,6 42,19 35,40 13,40 6,19" fill="rgba(245, 158, 11, 0.18)" stroke="#f59e0b" stroke-width="2.2" filter="drop-shadow(0 0 4px #f59e0b)"/>
+                                    <text x="24" y="28" text-anchor="middle" font-size="10" font-weight="bold" fill="#fbbf24" font-family="sans-serif">2.0x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Pentagon Lens</div>
+                                <div class="studio-card-desc">5-sided geometric polygon lens</div>
+                                <span class="studio-card-badge">Pentagon</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 5. Heptagon Magnify Lens -->
+                        <div class="studio-card asset-card" draggable="true" data-category="polygons" data-tool-type="callout" data-tool-name="Heptagon Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <polygon points="24,6 38,13 42,28 32,41 16,41 6,28 10,13" fill="rgba(168, 85, 247, 0.18)" stroke="#a855f7" stroke-width="2.2" filter="drop-shadow(0 0 4px #a855f7)"/>
+                                    <text x="24" y="28" text-anchor="middle" font-size="10" font-weight="bold" fill="#c084fc" font-family="sans-serif">2.2x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Heptagon Loupe</div>
+                                <div class="studio-card-desc">7-sided optical prism magnifier</div>
+                                <span class="studio-card-badge">Heptagon</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 6. Octagon Stop Loupe -->
+                        <div class="studio-card asset-card" draggable="true" data-category="polygons" data-tool-type="callout" data-tool-name="Octagon Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <polygon points="17,6 31,6 42,17 42,31 31,42 17,42 6,31 6,17" fill="rgba(239, 68, 68, 0.18)" stroke="#ef4444" stroke-width="2.2" filter="drop-shadow(0 0 4px #ef4444)"/>
+                                    <text x="24" y="27" text-anchor="middle" font-size="9" font-weight="bold" fill="#f87171" font-family="sans-serif">2.5x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Octagon Loupe</div>
+                                <div class="studio-card-desc">8-sided high impact octagon lens</div>
+                                <span class="studio-card-badge">Octagon</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 7. Love Heart Loupe -->
+                        <div class="studio-card asset-card" draggable="true" data-category="stylized" data-tool-type="callout" data-tool-name="Love Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <path d="M24,14 C24,9 15,6 10,12 C4,19 8,28 24,40 C40,28 44,19 38,12 C33,6 24,9 24,14 Z" fill="rgba(236, 72, 153, 0.2)" stroke="#ec4899" stroke-width="2.2" filter="drop-shadow(0 0 4px #ec4899)"/>
+                                    <text x="24" y="26" text-anchor="middle" font-size="9" font-weight="bold" fill="#f472b6" font-family="sans-serif">❤ 2.0x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Love Heart</div>
+                                <div class="studio-card-desc">Romantic heart shaped zoom lens</div>
+                                <span class="studio-card-badge">Love</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 8. Star Highlight Badge -->
+                        <div class="studio-card asset-card" draggable="true" data-category="stylized" data-tool-type="callout" data-tool-name="Star Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <polygon points="24,6 29,18 42,18 31,26 35,39 24,31 13,39 17,26 6,18 19,18" fill="rgba(234, 179, 8, 0.2)" stroke="#eab308" stroke-width="2" filter="drop-shadow(0 0 4px #eab308)"/>
+                                    <text x="24" y="28" text-anchor="middle" font-size="9" font-weight="bold" fill="#fde047" font-family="sans-serif">★</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Star Badge</div>
+                                <div class="studio-card-desc">5-point star highlight magnifier</div>
+                                <span class="studio-card-badge">Star</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 9. Diamond Prism Lens -->
+                        <div class="studio-card asset-card" draggable="true" data-category="stylized" data-tool-type="callout" data-tool-name="Diamond Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <polygon points="24,6 41,24 24,42 7,24" fill="rgba(6, 182, 212, 0.2)" stroke="#06b6d4" stroke-width="2.2" filter="drop-shadow(0 0 4px #06b6d4)"/>
+                                    <text x="24" y="27" text-anchor="middle" font-size="9" font-weight="bold" fill="#67e8f9" font-family="sans-serif">2.2x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Diamond Prism</div>
+                                <div class="studio-card-desc">Rhombus gem precision zoom</div>
+                                <span class="studio-card-badge">Diamond</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 10. Rounded Rect Screen Zoom -->
+                        <div class="studio-card asset-card" draggable="true" data-category="geometric" data-tool-type="callout" data-tool-name="Rounded Rect Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <rect x="7" y="10" width="34" height="28" rx="6" fill="rgba(56, 189, 248, 0.15)" stroke="#38bdf8" stroke-width="2.2" filter="drop-shadow(0 0 4px #38bdf8)"/>
+                                    <text x="24" y="28" text-anchor="middle" font-size="10" font-weight="bold" fill="#7dd3fc" font-family="sans-serif">2.0x</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Rounded Rect</div>
+                                <div class="studio-card-desc">UI viewport & screen area zoom</div>
+                                <span class="studio-card-badge">Rect</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 11. Spotlight Zoom Loupe -->
+                        <div class="studio-card asset-card" draggable="true" data-category="focus" data-tool-type="callout" data-tool-name="Spotlight Zoom Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <rect x="4" y="4" width="40" height="40" rx="4" fill="rgba(0,0,0,0.75)"/>
+                                    <circle cx="24" cy="24" r="14" fill="rgba(255, 255, 255, 0.35)" stroke="#ffffff" stroke-width="2"/>
+                                    <text x="24" y="27" text-anchor="middle" font-size="9" font-weight="bold" fill="#ffffff" font-family="sans-serif">SPOT</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Spotlight Zoom</div>
+                                <div class="studio-card-desc">Dimmed background with 2.2x zoom</div>
+                                <span class="studio-card-badge">Spotlight</span>
+                            </div>
+                            <div class="studio-card-apply-badge">+ Add</div>
+                        </div>
+
+                        <!-- 12. Blur Outline Feather Lens -->
+                        <div class="studio-card asset-card" draggable="true" data-category="focus" data-tool-type="callout" data-tool-name="Blur Outline Magnify Lens">
+                            <div class="studio-card-preview" style="background: #09131f; display: flex; align-items: center; justify-content: center;">
+                                <svg width="48" height="48" viewBox="0 0 48 48">
+                                    <circle cx="24" cy="24" r="18" fill="rgba(56, 189, 248, 0.12)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="2,2"/>
+                                    <circle cx="24" cy="24" r="13" fill="rgba(56, 189, 248, 0.25)" stroke="#38bdf8" stroke-width="1" filter="blur(1px)"/>
+                                    <text x="24" y="27" text-anchor="middle" font-size="8.5" font-weight="bold" fill="#bae6fd" font-family="sans-serif">FEATHER</text>
+                                </svg>
+                            </div>
+                            <div class="studio-card-info">
+                                <div class="studio-card-title">Blur Outline</div>
+                                <div class="studio-card-desc">Feathered edge soft blur magnifier</div>
+                                <span class="studio-card-badge">Feather</span>
                             </div>
                             <div class="studio-card-apply-badge">+ Add</div>
                         </div>
@@ -2412,6 +2631,7 @@
                         </div>
                         <select class="control-input" id="selPropertiesSubMenu" style="font-size: 11.5px; font-weight: 600; padding: 5px 8px; border-radius: 4px; background: #0f172a; color: #f8fafc; border: 1px solid rgba(56, 189, 248, 0.4); cursor: pointer;">
                             <option value="all" selected>📋 All Properties (Full View)</option>
+                            <option value="magnify">🔍 Zoom, Magnify & Highlight</option>
                             <option value="callout">💬 Callout, Fonts & Text</option>
                             <option value="transform">📐 Transform, Position & Scale</option>
                             <option value="timing">⏱️ Clip Timing & Playback Speed</option>
@@ -2738,6 +2958,184 @@
                                     </label>
                                     <input type="range" class="control-input" id="propTextShadowOpacity" min="0" max="100" value="85">
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zoom, Magnify & Highlight Lens Properties -->
+                    <div id="sectionMagnifyProps" style="display: none;">
+                        <div class="inspector-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(56, 189, 248, 0.25);">
+                            <span style="font-size: 11px; font-weight: 800; color: #38bdf8; letter-spacing: 0.5px;">🔍 ZOOM & MAGNIFIER TOOLS</span>
+                            <button class="btn btn-secondary" id="btnResetMagnifyProps" style="font-size: 9px; padding: 2px 6px;" title="Reset zoom and lens parameters to default">Reset</button>
+                        </div>
+
+                        <!-- Tool 1: Zoom & Magnification Controls (Collapsible) -->
+                        <div class="inspector-section mag-tool-section" style="margin-bottom: 8px;">
+                            <div class="inspector-section-title" style="cursor: pointer;">
+                                <span>🔎 ZOOM & MAGNIFICATION</span>
+                            </div>
+                            <div class="control-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="control-label" style="margin: 0;">Zoom Level</label>
+                                    <span id="lblMagLevel" style="font-size: 10px; font-weight: 700; color: #38bdf8;">2.0x</span>
+                                </div>
+                                <input type="range" class="control-range" id="propMagLevel" min="1.0" max="5.0" step="0.1" value="2.0">
+                                <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted);">
+                                    <span>1.0x (Normal)</span>
+                                    <span>2.5x</span>
+                                    <span>5.0x (Ultra)</span>
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <div class="control-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label class="control-label" style="margin: 0;">Focal Offset X</label>
+                                        <span id="lblMagFocalX" style="font-size: 10px; color: var(--text-muted);">0px</span>
+                                    </div>
+                                    <input type="range" class="control-range" id="propMagFocalX" min="-400" max="400" step="5" value="0">
+                                </div>
+                                <div class="control-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label class="control-label" style="margin: 0;">Focal Offset Y</label>
+                                        <span id="lblMagFocalY" style="font-size: 10px; color: var(--text-muted);">0px</span>
+                                    </div>
+                                    <input type="range" class="control-range" id="propMagFocalY" min="-400" max="400" step="5" value="0">
+                                </div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-secondary);">
+                                    <input type="checkbox" id="chkMagCurvature" checked>
+                                    <span>Specular Reflection</span>
+                                </label>
+                                <button type="button" class="btn btn-secondary" id="btnCenterFocalPoint" style="font-size: 9.5px; padding: 2px 8px;" title="Reset Focal Center Point to Lens Center">⌖ Center Focus</button>
+                            </div>
+                        </div>
+
+                        <!-- Tool 2: Shape Selector & Presets (Collapsible) -->
+                        <div class="inspector-section mag-tool-section" style="margin-bottom: 8px;">
+                            <div class="inspector-section-title" style="cursor: pointer;">
+                                <span>📐 GEOMETRIC SHAPES</span>
+                            </div>
+                            <div class="control-group">
+                                <label class="control-label">Active Lens Geometry</label>
+                                <select class="control-input" id="propMagShape">
+                                    <option value="circle">⚪ Circle Lens</option>
+                                    <option value="ellipse">⬭ Ellipse (Wide Aspect)</option>
+                                    <option value="cross">✚ Tactical Crosshair Reticle</option>
+                                    <option value="pentagon">⬠ Regular Pentagon (5-Sided)</option>
+                                    <option value="heptagon">⬡ Regular Heptagon (7-Sided)</option>
+                                    <option value="octagon">🛑 Regular Octagon (8-Sided)</option>
+                                    <option value="love">💖 Love / Heart Romance</option>
+                                    <option value="star">⭐ 5-Point Star Badge</option>
+                                    <option value="diamond">💎 Diamond Prism</option>
+                                    <option value="rounded-rect">▢ Rounded Rectangle</option>
+                                </select>
+                            </div>
+                            <div class="control-group" style="margin-top: 6px;">
+                                <label class="control-label">Quick Shape Switcher</label>
+                                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="circle" title="Circle">⚪</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="ellipse" title="Ellipse">⬭</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="cross" title="Cross">✚</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="pentagon" title="Pentagon">⬠</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="heptagon" title="Heptagon">⬡</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="octagon" title="Octagon">🛑</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="love" title="Love Heart">💖</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="star" title="Star">⭐</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="diamond" title="Diamond">💎</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-shape-preset" data-shape="rounded-rect" title="Rounded Rect">▢</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tool 3: Border Color & Outline Styling (Collapsible) -->
+                        <div class="inspector-section mag-tool-section" style="margin-bottom: 8px;">
+                            <div class="inspector-section-title" style="cursor: pointer;">
+                                <span>🎨 BORDER COLOR & OUTLINE</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 44px 1fr; gap: 8px; align-items: center; margin-bottom: 8px;">
+                                <input type="color" class="control-input" id="propMagBorderColor" value="#00f0ff" style="height: 32px; padding: 2px; cursor: pointer; border-radius: 4px;">
+                                <input type="text" class="control-input" id="txtMagBorderColor" value="#00f0ff" placeholder="#00f0ff" style="font-family: monospace; font-size: 11px;">
+                            </div>
+                            <!-- Quick Swatches -->
+                            <div style="display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;">
+                                <button type="button" class="btn-mag-color-swatch" data-color="#00f0ff" style="width: 22px; height: 22px; border-radius: 4px; background: #00f0ff; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Cyan Glow"></button>
+                                <button type="button" class="btn-mag-color-swatch" data-color="#3b82f6" style="width: 22px; height: 22px; border-radius: 4px; background: #3b82f6; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Blue"></button>
+                                <button type="button" class="btn-mag-color-swatch" data-color="#ec4899" style="width: 22px; height: 22px; border-radius: 4px; background: #ec4899; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Neon Pink"></button>
+                                <button type="button" class="btn-mag-color-swatch" data-color="#a855f7" style="width: 22px; height: 22px; border-radius: 4px; background: #a855f7; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Purple Glow"></button>
+                                <button type="button" class="btn-mag-color-swatch" data-color="#22c55e" style="width: 22px; height: 22px; border-radius: 4px; background: #22c55e; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Emerald"></button>
+                                <button type="button" class="btn-mag-color-swatch" data-color="#eab308" style="width: 22px; height: 22px; border-radius: 4px; background: #eab308; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Gold Amber"></button>
+                                <button type="button" class="btn-mag-color-swatch" data-color="#ef4444" style="width: 22px; height: 22px; border-radius: 4px; background: #ef4444; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Ruby Red"></button>
+                                <button type="button" class="btn-mag-color-swatch" data-color="#ffffff" style="width: 22px; height: 22px; border-radius: 4px; background: #ffffff; border: 1px solid rgba(255,255,255,0.4); cursor: pointer;" title="Pure White"></button>
+                            </div>
+                            <div class="control-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="control-label" style="margin: 0;">Border Thickness</label>
+                                    <span id="lblMagBorderWidth" style="font-size: 10px; font-weight: 700; color: #38bdf8;">4px</span>
+                                </div>
+                                <input type="range" class="control-range" id="propMagBorderWidth" min="0" max="30" step="1" value="4">
+                            </div>
+                            <div class="control-group">
+                                <label class="control-label">Border Finish / Style</label>
+                                <select class="control-input" id="propMagBorderStyle">
+                                    <option value="glow">✨ Neon Luminous Glow</option>
+                                    <option value="solid">━ Solid Sharp Outline</option>
+                                    <option value="metallic">🛡 Metallic Chrome Specular</option>
+                                    <option value="dashed">╌╌ Dashed Dynamic Outline</option>
+                                    <option value="none">🚫 Frameless / Borderless</option>
+                                </select>
+                            </div>
+                            <div class="control-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="control-label" style="margin: 0;">Blur Outline / Feather Edge</label>
+                                    <span id="lblMagBlurOutline" style="font-size: 10px; font-weight: 700; color: #38bdf8;">0px</span>
+                                </div>
+                                <input type="range" class="control-range" id="propMagBlurOutline" min="0" max="40" step="1" value="0">
+                            </div>
+                        </div>
+
+                        <!-- Tool 4: Opacity & Spotlight Dimming (Collapsible) -->
+                        <div class="inspector-section mag-tool-section" style="margin-bottom: 8px;">
+                            <div class="inspector-section-title" style="cursor: pointer;">
+                                <span>💡 OPACITY & SPOTLIGHT HIGHLIGHT</span>
+                            </div>
+                            <div class="control-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="control-label" style="margin: 0;">Lens Layer Opacity</label>
+                                    <span id="lblMagOpacity" style="font-size: 10px; font-weight: 700; color: #38bdf8;">100%</span>
+                                </div>
+                                <input type="range" class="control-range" id="propMagOpacity" min="10" max="100" step="5" value="100">
+                            </div>
+                            <div class="control-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="control-label" style="margin: 0;">Spotlight Background Dimming</label>
+                                    <span id="lblMagSpotlightDim" style="font-size: 10px; font-weight: 700; color: #38bdf8;">0%</span>
+                                </div>
+                                <input type="range" class="control-range" id="propMagSpotlightDim" min="0" max="90" step="5" value="0">
+                                <div style="font-size: 9px; color: var(--text-muted); margin-top: 3px;">
+                                    Darkens non-magnified video areas to highlight the lens target.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tool 5: Motion Tracking (Collapsible) -->
+                        <div class="inspector-section mag-tool-section" style="margin-bottom: 8px;">
+                            <div class="inspector-section-title" style="cursor: pointer;">
+                                <span>🎯 MOTION TRACKING</span>
+                            </div>
+                            <div class="control-group">
+                                <label class="control-label">Tracking Mode</label>
+                                <select class="control-input" id="propMagTrackingMode">
+                                    <option value="fixed">📌 Fixed Timeline Position</option>
+                                    <option value="cursor">🖱 Follow Screen Cursor Telemetry</option>
+                                </select>
+                            </div>
+                            <div class="control-group" id="groupMagTrackingSmooth">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="control-label" style="margin: 0;">Tracking Smoothing / Inertia</label>
+                                    <span id="lblMagTrackingSmooth" style="font-size: 10px; font-weight: 700; color: #38bdf8;">50%</span>
+                                </div>
+                                <input type="range" class="control-range" id="propMagTrackingSmooth" min="0" max="100" step="5" value="50">
                             </div>
                         </div>
                     </div>

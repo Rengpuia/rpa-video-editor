@@ -173,8 +173,8 @@ class RpaStudioApp {
             btnExpandInspector.classList.add('hidden');
         };
 
-        // 4. Sidebar Tabs (All 11 Tabs including Studio SFX Pack)
-        const tabKeys = ['media', 'annotations', 'transitions', 'behaviors', 'animations', 'cursor', 'visual', 'audio', 'sfx', 'captions', 'narration'];
+        // 4. Sidebar Tabs (All 12 Tabs including Zoom/Magnify & Studio SFX Pack)
+        const tabKeys = ['media', 'annotations', 'magnify', 'transitions', 'behaviors', 'animations', 'cursor', 'visual', 'audio', 'sfx', 'captions', 'narration'];
         document.querySelectorAll('.sidebar-tab').forEach(tab => {
             tab.onclick = () => {
                 document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
@@ -2389,6 +2389,294 @@ class RpaStudioApp {
                 btnSnap.title = `Magnetic Snapping: ${this.timeline.snappingEnabled ? 'ON' : 'OFF'}`;
             };
         }
+
+        this.initMagnifyPropsUI();
+    }
+
+    initMagnifyPropsUI() {
+        const getClip = () => (this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null);
+
+        // Accordion Chevrons and Click Handlers for Magnify Tool Sections
+        document.querySelectorAll('.mag-tool-section .inspector-section-title').forEach(titleEl => {
+            if (!titleEl.dataset.accordionInit) {
+                titleEl.dataset.accordionInit = 'true';
+                if (!titleEl.querySelector('.accordion-chevron')) {
+                    const chv = document.createElement('span');
+                    chv.className = 'accordion-chevron';
+                    chv.innerText = '▼';
+                    chv.style.fontSize = '9px';
+                    chv.style.opacity = '0.7';
+                    titleEl.appendChild(chv);
+                }
+                titleEl.onclick = () => {
+                    const sec = titleEl.closest('.inspector-section');
+                    if (sec) {
+                        const isCollapsed = sec.classList.toggle('collapsed');
+                        const chv = titleEl.querySelector('.accordion-chevron');
+                        if (chv) chv.innerText = isCollapsed ? '▶' : '▼';
+                    }
+                };
+            }
+        });
+
+        // 1. Zoom Level
+        const propMagLevel = document.getElementById('propMagLevel');
+        if (propMagLevel) {
+            propMagLevel.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.magnification = parseFloat(e.target.value);
+                    const lbl = document.getElementById('lblMagLevel');
+                    if (lbl) lbl.innerText = `${clip.magnification.toFixed(1)}x`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagLevel.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        // 2. Focal Offsets
+        const propMagFocalX = document.getElementById('propMagFocalX');
+        if (propMagFocalX) {
+            propMagFocalX.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.focalOffsetX = parseInt(e.target.value, 10);
+                    const lbl = document.getElementById('lblMagFocalX');
+                    if (lbl) lbl.innerText = `${clip.focalOffsetX}px`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagFocalX.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        const propMagFocalY = document.getElementById('propMagFocalY');
+        if (propMagFocalY) {
+            propMagFocalY.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.focalOffsetY = parseInt(e.target.value, 10);
+                    const lbl = document.getElementById('lblMagFocalY');
+                    if (lbl) lbl.innerText = `${clip.focalOffsetY}px`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagFocalY.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        // 3. Focal Center & Glass Curvature
+        const btnCenterFocus = document.getElementById('btnCenterFocalPoint');
+        if (btnCenterFocus) {
+            btnCenterFocus.onclick = () => {
+                const clip = getClip();
+                if (clip) {
+                    clip.focalOffsetX = 0;
+                    clip.focalOffsetY = 0;
+                    if (propMagFocalX) propMagFocalX.value = 0;
+                    if (propMagFocalY) propMagFocalY.value = 0;
+                    const lX = document.getElementById('lblMagFocalX');
+                    if (lX) lX.innerText = '0px';
+                    const lY = document.getElementById('lblMagFocalY');
+                    if (lY) lY.innerText = '0px';
+                    this.timeline.saveSnapshot();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+        }
+
+        const chkCurv = document.getElementById('chkMagCurvature');
+        if (chkCurv) {
+            chkCurv.onchange = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.lensCurvature = e.target.checked;
+                    this.timeline.saveSnapshot();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+        }
+
+        // 4. Shape Select & Quick Preset Buttons
+        const propMagShape = document.getElementById('propMagShape');
+        if (propMagShape) {
+            propMagShape.onchange = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.shape = e.target.value;
+                    this.timeline.saveSnapshot();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+        }
+
+        document.querySelectorAll('.btn-mag-shape-preset').forEach(btn => {
+            btn.onclick = () => {
+                const clip = getClip();
+                if (clip) {
+                    const sh = btn.dataset.shape;
+                    clip.shape = sh;
+                    if (propMagShape) propMagShape.value = sh;
+                    this.timeline.saveSnapshot();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+        });
+
+        // 5. Border Color Picker & Swatches
+        const propMagBorderColor = document.getElementById('propMagBorderColor');
+        const txtMagBorderColor = document.getElementById('txtMagBorderColor');
+        const setMagColor = (col) => {
+            const clip = getClip();
+            if (clip) {
+                clip.borderColor = col;
+                clip.color = col;
+                if (propMagBorderColor) propMagBorderColor.value = col;
+                if (txtMagBorderColor) txtMagBorderColor.value = col;
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            }
+        };
+
+        if (propMagBorderColor) {
+            propMagBorderColor.oninput = (e) => setMagColor(e.target.value);
+            propMagBorderColor.onchange = () => this.timeline.saveSnapshot();
+        }
+        if (txtMagBorderColor) {
+            txtMagBorderColor.onchange = (e) => {
+                let col = e.target.value.trim();
+                if (!col.startsWith('#')) col = '#' + col;
+                setMagColor(col);
+                this.timeline.saveSnapshot();
+            };
+        }
+        document.querySelectorAll('.btn-mag-color-swatch').forEach(btn => {
+            btn.onclick = () => {
+                setMagColor(btn.dataset.color);
+                this.timeline.saveSnapshot();
+            };
+        });
+
+        // 6. Border Width, Style & Blur Outline
+        const propMagBorderWidth = document.getElementById('propMagBorderWidth');
+        if (propMagBorderWidth) {
+            propMagBorderWidth.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.borderWidth = parseInt(e.target.value, 10);
+                    const lbl = document.getElementById('lblMagBorderWidth');
+                    if (lbl) lbl.innerText = `${clip.borderWidth}px`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagBorderWidth.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        const propMagBorderStyle = document.getElementById('propMagBorderStyle');
+        if (propMagBorderStyle) {
+            propMagBorderStyle.onchange = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.borderStyle = e.target.value;
+                    this.timeline.saveSnapshot();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+        }
+
+        const propMagBlurOutline = document.getElementById('propMagBlurOutline');
+        if (propMagBlurOutline) {
+            propMagBlurOutline.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.blurOutline = parseInt(e.target.value, 10);
+                    const lbl = document.getElementById('lblMagBlurOutline');
+                    if (lbl) lbl.innerText = `${clip.blurOutline}px`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagBlurOutline.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        // 7. Opacity & Spotlight Dimming
+        const propMagOpacity = document.getElementById('propMagOpacity');
+        if (propMagOpacity) {
+            propMagOpacity.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.opacity = parseInt(e.target.value, 10) / 100;
+                    const lbl = document.getElementById('lblMagOpacity');
+                    if (lbl) lbl.innerText = `${e.target.value}%`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagOpacity.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        const propMagSpotlightDim = document.getElementById('propMagSpotlightDim');
+        if (propMagSpotlightDim) {
+            propMagSpotlightDim.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.spotlightDim = parseInt(e.target.value, 10) / 100;
+                    const lbl = document.getElementById('lblMagSpotlightDim');
+                    if (lbl) lbl.innerText = `${e.target.value}%`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagSpotlightDim.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        // 8. Motion Tracking
+        const propMagTrackingMode = document.getElementById('propMagTrackingMode');
+        if (propMagTrackingMode) {
+            propMagTrackingMode.onchange = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.trackingMode = e.target.value;
+                    this.timeline.saveSnapshot();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+        }
+
+        const propMagTrackingSmooth = document.getElementById('propMagTrackingSmooth');
+        if (propMagTrackingSmooth) {
+            propMagTrackingSmooth.oninput = (e) => {
+                const clip = getClip();
+                if (clip) {
+                    clip.trackingSmooth = parseInt(e.target.value, 10) / 100;
+                    const lbl = document.getElementById('lblMagTrackingSmooth');
+                    if (lbl) lbl.innerText = `${e.target.value}%`;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            propMagTrackingSmooth.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        // 9. Reset Button
+        const btnResetMag = document.getElementById('btnResetMagnifyProps');
+        if (btnResetMag) {
+            btnResetMag.onclick = () => {
+                const clip = getClip();
+                if (clip) {
+                    clip.magnification = 2.0;
+                    clip.shape = 'circle';
+                    clip.borderColor = '#00f0ff';
+                    clip.color = '#00f0ff';
+                    clip.borderWidth = 4;
+                    clip.borderStyle = 'glow';
+                    clip.blurOutline = 0;
+                    clip.opacity = 1.0;
+                    clip.spotlightDim = 0.0;
+                    clip.lensCurvature = true;
+                    clip.focalOffsetX = 0;
+                    clip.focalOffsetY = 0;
+                    clip.trackingMode = 'fixed';
+                    clip.trackingSmooth = 0.5;
+                    this.timeline.saveSnapshot();
+                    this.renderProperties(clip);
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+        }
     }
 
     /**
@@ -3078,20 +3366,12 @@ class RpaStudioApp {
         const newClip = {
             title,
             type: 'callout',
-            subtype: defaults.subtype,
             trackId: 4,
             startTime: this.playheadTime,
             duration: 4.0,
             scale: 1.0,
-            scaleX: defaults.scaleX,
-            scaleY: defaults.scaleY,
-            xOffset: defaults.xOffset,
-            yOffset: defaults.yOffset,
-            color: defaults.color,
-            fontSize: defaults.fontSize,
-            text: defaults.text,
-            subText: defaults.subText,
-            aspectRatioLocked: false
+            aspectRatioLocked: false,
+            ...defaults
         };
         const added = this.timeline.addClip(newClip);
         if (added) {
@@ -4307,6 +4587,7 @@ class RpaStudioApp {
     getCalloutSubtype(toolName) {
         if (!toolName) return 'title';
         const name = toolName.toLowerCase();
+        if (name.includes('magnif') || name.includes('loupe') || name.includes('zoom lens') || name.includes('magnifier')) return 'magnify';
         if (name.includes('plain text') || name === 'text' || name.includes('plain-text')) return 'text';
         if (name.includes('title')) return 'title';
         if (name.includes('speech')) return 'speech';
@@ -4329,7 +4610,48 @@ class RpaStudioApp {
 
     getCalloutDefaults(toolName) {
         const subtype = this.getCalloutSubtype(toolName);
+        const name = (toolName || '').toLowerCase();
+
+        let magShape = 'circle';
+        let magLevel = 2.0;
+        let magDim = 0.0;
+        let magBlur = 0;
+        let magWidth = 4;
+        let magStyle = 'glow';
+        let magColor = '#00f0ff';
+
+        if (name.includes('ellipse')) { magShape = 'ellipse'; magColor = '#3b82f6'; }
+        else if (name.includes('cross')) { magShape = 'cross'; magColor = '#10b981'; magLevel = 2.5; }
+        else if (name.includes('pentagon')) { magShape = 'pentagon'; magColor = '#f59e0b'; }
+        else if (name.includes('heptagon')) { magShape = 'heptagon'; magColor = '#a855f7'; magLevel = 2.2; }
+        else if (name.includes('octagon')) { magShape = 'octagon'; magColor = '#ef4444'; magLevel = 2.5; }
+        else if (name.includes('love') || name.includes('heart')) { magShape = 'love'; magColor = '#ec4899'; }
+        else if (name.includes('star')) { magShape = 'star'; magColor = '#eab308'; }
+        else if (name.includes('diamond')) { magShape = 'diamond'; magColor = '#06b6d4'; magLevel = 2.2; }
+        else if (name.includes('rounded rect') || name.includes('rounded-rect') || name.includes('screen zoom')) { magShape = 'rounded-rect'; magColor = '#38bdf8'; }
+        else if (name.includes('spotlight')) { magShape = 'circle'; magDim = 0.65; magLevel = 2.2; magColor = '#ffffff'; }
+        else if (name.includes('blur outline') || name.includes('feather')) { magShape = 'circle'; magBlur = 20; magWidth = 2; magColor = '#38bdf8'; }
+
         const map = {
+            'magnify': {
+                scaleX: 0.35, scaleY: 0.35, xOffset: 0, yOffset: 0,
+                width: 360, height: 360,
+                color: magColor, fontSize: 20,
+                text: '', subText: '',
+                shape: magShape,
+                magnification: magLevel,
+                borderColor: magColor,
+                borderWidth: magWidth,
+                borderStyle: magStyle,
+                blurOutline: magBlur,
+                opacity: 1.0,
+                spotlightDim: magDim,
+                lensCurvature: true,
+                focalOffsetX: 0,
+                focalOffsetY: 0,
+                trackingMode: 'fixed',
+                trackingSmooth: 0.5
+            },
             'text': {
                 scaleX: 0.50, scaleY: 0.12, xOffset: 0, yOffset: 0,
                 color: '#ffffff', fontSize: 38,
@@ -4560,10 +4882,11 @@ class RpaStudioApp {
         const isAudio = (cType === 'audio' || cType === 'sfx');
         const isImage = (cType === 'image');
         const isVisual = (isCallout || isVideo || isImage);
+        const isMagnify = isCallout && (selectedClip.subtype === 'magnify' || (selectedClip.title && selectedClip.title.toLowerCase().includes('magnif')));
 
         // Update Active Clip Type Badge
         const typeBadge = document.getElementById('lblActiveClipTypeBadge');
-        if (typeBadge) typeBadge.innerText = (selectedClip.title || cType).toUpperCase();
+        if (typeBadge) typeBadge.innerText = (isMagnify ? 'MAGNIFY LENS' : (selectedClip.title || cType)).toUpperCase();
 
         const selSubMenu = document.getElementById('selPropertiesSubMenu');
         let subMenuVal = selSubMenu ? selSubMenu.value : 'all';
@@ -4571,7 +4894,8 @@ class RpaStudioApp {
         // Filter / adjust sub-menu options based on clip capabilities
         const optionValidity = {
             'all': true,
-            'callout': isCallout,
+            'magnify': isMagnify,
+            'callout': isCallout && !isMagnify,
             'transform': isVisual,
             'timing': true,
             'behaviors': isCallout || (selectedClip.behavior && selectedClip.behavior !== 'none'),
@@ -4590,7 +4914,7 @@ class RpaStudioApp {
 
             // If current sub-menu value is invalid for this clip type, auto reset
             if (subMenuVal !== 'all' && !optionValidity[subMenuVal]) {
-                subMenuVal = isCallout ? 'callout' : (isAudio ? 'audio' : 'all');
+                subMenuVal = isMagnify ? 'magnify' : (isCallout ? 'callout' : (isAudio ? 'audio' : 'all'));
                 selSubMenu.value = subMenuVal;
             }
         }
@@ -4604,7 +4928,8 @@ class RpaStudioApp {
 
         setSectionVisible('sectionClipTiming', isSub('timing') && true);
         setSectionVisible('sectionClipSpeed', isSub('timing') && (isVideo || isAudio));
-        setSectionVisible('sectionCalloutProps', isSub('callout') && isCallout);
+        setSectionVisible('sectionCalloutProps', isSub('callout') && isCallout && !isMagnify);
+        setSectionVisible('sectionMagnifyProps', (isSub('magnify') || isSub('all') || isSub('callout')) && isMagnify);
         setSectionVisible('sectionTransformProps', isSub('transform') && isVisual);
         setSectionVisible('sectionBehaviors', isSub('behaviors') && (isCallout || (selectedClip.behavior && selectedClip.behavior !== 'none')));
         setSectionVisible('sectionAnimationProps', isSub('animations') && (isVideo || isCallout || isImage));
@@ -4627,9 +4952,84 @@ class RpaStudioApp {
         const propDuration = document.getElementById('propDuration');
         if (propDuration) propDuration.value = (selectedClip.duration || 0).toFixed(1);
 
-        // 2. Callout & Annotation Properties
+        // 2. Zoom & Magnifier Properties
+        const secMagnify = document.getElementById('sectionMagnifyProps');
+        if (secMagnify) secMagnify.style.display = ((isSub('magnify') || isSub('all') || isSub('callout')) && isMagnify) ? 'block' : 'none';
+
+        if (isMagnify) {
+            const mag = selectedClip.magnification !== undefined ? selectedClip.magnification : 2.0;
+            const fx = selectedClip.focalOffsetX || 0;
+            const fy = selectedClip.focalOffsetY || 0;
+            const bCol = selectedClip.borderColor || selectedClip.color || '#00f0ff';
+            const bWid = selectedClip.borderWidth !== undefined ? selectedClip.borderWidth : 4;
+            const bSty = selectedClip.borderStyle || 'glow';
+            const bBlur = selectedClip.blurOutline || 0;
+            const opVal = Math.round((selectedClip.opacity !== undefined ? selectedClip.opacity : 1.0) * 100);
+            const dimVal = Math.round((selectedClip.spotlightDim !== undefined ? selectedClip.spotlightDim : 0.0) * 100);
+            const trkMode = selectedClip.trackingMode || 'fixed';
+            const trkSm = Math.round((selectedClip.trackingSmooth !== undefined ? selectedClip.trackingSmooth : 0.5) * 100);
+
+            const propMagLevel = document.getElementById('propMagLevel');
+            if (propMagLevel) propMagLevel.value = mag;
+            const lblMagLevel = document.getElementById('lblMagLevel');
+            if (lblMagLevel) lblMagLevel.innerText = `${mag.toFixed(1)}x`;
+
+            const propMagFocalX = document.getElementById('propMagFocalX');
+            if (propMagFocalX) propMagFocalX.value = fx;
+            const lblMagFocalX = document.getElementById('lblMagFocalX');
+            if (lblMagFocalX) lblMagFocalX.innerText = `${fx}px`;
+
+            const propMagFocalY = document.getElementById('propMagFocalY');
+            if (propMagFocalY) propMagFocalY.value = fy;
+            const lblMagFocalY = document.getElementById('lblMagFocalY');
+            if (lblMagFocalY) lblMagFocalY.innerText = `${fy}px`;
+
+            const chkMagCurvature = document.getElementById('chkMagCurvature');
+            if (chkMagCurvature) chkMagCurvature.checked = selectedClip.lensCurvature !== false;
+
+            const propMagShape = document.getElementById('propMagShape');
+            if (propMagShape) propMagShape.value = selectedClip.shape || 'circle';
+
+            const propMagBorderColor = document.getElementById('propMagBorderColor');
+            if (propMagBorderColor) propMagBorderColor.value = bCol;
+            const txtMagBorderColor = document.getElementById('txtMagBorderColor');
+            if (txtMagBorderColor) txtMagBorderColor.value = bCol;
+
+            const propMagBorderWidth = document.getElementById('propMagBorderWidth');
+            if (propMagBorderWidth) propMagBorderWidth.value = bWid;
+            const lblMagBorderWidth = document.getElementById('lblMagBorderWidth');
+            if (lblMagBorderWidth) lblMagBorderWidth.innerText = `${bWid}px`;
+
+            const propMagBorderStyle = document.getElementById('propMagBorderStyle');
+            if (propMagBorderStyle) propMagBorderStyle.value = bSty;
+
+            const propMagBlurOutline = document.getElementById('propMagBlurOutline');
+            if (propMagBlurOutline) propMagBlurOutline.value = bBlur;
+            const lblMagBlurOutline = document.getElementById('lblMagBlurOutline');
+            if (lblMagBlurOutline) lblMagBlurOutline.innerText = `${bBlur}px`;
+
+            const propMagOpacity = document.getElementById('propMagOpacity');
+            if (propMagOpacity) propMagOpacity.value = opVal;
+            const lblMagOpacity = document.getElementById('lblMagOpacity');
+            if (lblMagOpacity) lblMagOpacity.innerText = `${opVal}%`;
+
+            const propMagSpotlightDim = document.getElementById('propMagSpotlightDim');
+            if (propMagSpotlightDim) propMagSpotlightDim.value = dimVal;
+            const lblMagSpotlightDim = document.getElementById('lblMagSpotlightDim');
+            if (lblMagSpotlightDim) lblMagSpotlightDim.innerText = `${dimVal}%`;
+
+            const propMagTrackingMode = document.getElementById('propMagTrackingMode');
+            if (propMagTrackingMode) propMagTrackingMode.value = trkMode;
+
+            const propMagTrackingSmooth = document.getElementById('propMagTrackingSmooth');
+            if (propMagTrackingSmooth) propMagTrackingSmooth.value = trkSm;
+            const lblMagTrackingSmooth = document.getElementById('lblMagTrackingSmooth');
+            if (lblMagTrackingSmooth) lblMagTrackingSmooth.innerText = `${trkSm}%`;
+        }
+
+        // 3. Callout & Annotation Properties
         const secCallout = document.getElementById('sectionCalloutProps');
-        if (secCallout) secCallout.style.display = selectedClip.type === 'callout' ? 'block' : 'none';
+        if (secCallout) secCallout.style.display = (isSub('callout') && isCallout && !isMagnify) ? 'block' : 'none';
         
         const subtype = selectedClip.subtype || this.getCalloutSubtype(selectedClip.title) || 'title';
         const propCalloutSubtype = document.getElementById('propCalloutSubtype');
@@ -5536,20 +5936,12 @@ class RpaStudioApp {
             const newClip = {
                 title: toolName,
                 type: 'callout',
-                subtype: defaults.subtype,
                 trackId: 4,
                 startTime: this.playheadTime,
                 duration: 4.0,
                 scale: 1.0,
-                scaleX: defaults.scaleX,
-                scaleY: defaults.scaleY,
-                xOffset: defaults.xOffset,
-                yOffset: defaults.yOffset,
-                color: defaults.color,
-                fontSize: defaults.fontSize,
-                text: defaults.text,
-                subText: defaults.subText,
-                aspectRatioLocked: false
+                aspectRatioLocked: false,
+                ...defaults
             };
             const added = this.timeline.addClip(newClip);
             if (added) {
@@ -5628,20 +6020,12 @@ class RpaStudioApp {
             const newClip = {
                 title: data.toolName,
                 type: 'callout',
-                subtype: defaults.subtype,
                 trackId,
                 startTime: dropTime,
                 duration: 4.0,
                 scale: 1.0,
-                scaleX: defaults.scaleX,
-                scaleY: defaults.scaleY,
-                xOffset: defaults.xOffset,
-                yOffset: defaults.yOffset,
-                color: defaults.color,
-                fontSize: defaults.fontSize,
-                text: defaults.text,
-                subText: defaults.subText,
-                aspectRatioLocked: false
+                aspectRatioLocked: false,
+                ...defaults
             };
             const added = this.timeline.addClip(newClip);
             if (added) {

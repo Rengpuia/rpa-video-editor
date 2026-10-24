@@ -1016,6 +1016,11 @@ class RpaCompositor {
             bh = clip.height || 400;
             bx = (width - bw) / 2 + (clip.xOffset || 0);
             by = (height - bh) / 2 + (clip.yOffset || 0);
+        } else if (title.includes('magnif') || subtype === 'magnify' || title.includes('loupe') || title.includes('zoom lens')) {
+            bw = clip.width || 360;
+            bh = clip.height || 360;
+            bx = (width - bw) / 2 + (clip.xOffset || 0);
+            by = (height - bh) / 2 + (clip.yOffset || 0);
         } else if (title.includes('highlight') || subtype === 'highlight') {
             bw = clip.width || 440;
             bh = clip.height || 70;
@@ -3537,6 +3542,8 @@ class RpaCompositor {
             const ac = getAlignedCoords(bx, by, bw, bh);
             const maxW = Math.max(60, bw - 40 * bScale);
             this.renderStyledText(this.ctx, displayText || 'Important Step Here!', ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
+        } else if (title.includes('Magnif') || subtype === 'magnify' || title.includes('Loupe') || title.includes('Zoom Lens')) {
+            this.renderMagnifyLens(clip, drawX, drawY, drawW, drawH, width, height, isDefaultFull, relTime, duration);
         } else if (title.includes('Spotlight') || subtype === 'spotlight') {
             // Cutout spotlight: dim full canvas with dark overlay, then punch clear circular hole
             const cx = isDefaultFull ? width * 0.5 : (drawX + drawW / 2);
@@ -3827,6 +3834,257 @@ class RpaCompositor {
             const maxW = Math.max(60, bw - 24 * bScale);
             this.renderStyledText(this.ctx, displayText || title, ac.tx, ac.ty, { ...clip, fontSize: fSize, color: '#ffffff' }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
         }
+        this.ctx.restore();
+    }
+
+    /**
+     * Build 2D Geometric Path for Zoom/Magnify/Highlight Lens
+     * Supports: circle, ellipse, cross, pentagon, heptagon, octagon, love (heart), star, diamond, rounded-rect
+     */
+    buildShapePath(ctx, shape, cx, cy, w, h) {
+        ctx.beginPath();
+        const hw = w / 2;
+        const hh = h / 2;
+        const r = Math.min(hw, hh);
+
+        switch (shape) {
+            case 'circle':
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                break;
+
+            case 'ellipse':
+                ctx.ellipse(cx, cy, hw, hh, 0, 0, Math.PI * 2);
+                break;
+
+            case 'cross': {
+                const tw = w * 0.18;
+                const th = h * 0.18;
+                ctx.moveTo(cx - tw, cy - hh);
+                ctx.lineTo(cx + tw, cy - hh);
+                ctx.lineTo(cx + tw, cy - th);
+                ctx.lineTo(cx + hw, cy - th);
+                ctx.lineTo(cx + hw, cy + th);
+                ctx.lineTo(cx + tw, cy + th);
+                ctx.lineTo(cx + tw, cy + hh);
+                ctx.lineTo(cx - tw, cy + hh);
+                ctx.lineTo(cx - tw, cy + th);
+                ctx.lineTo(cx - hw, cy + th);
+                ctx.lineTo(cx - hw, cy - th);
+                ctx.lineTo(cx - tw, cy - th);
+                ctx.closePath();
+                break;
+            }
+
+            case 'pentagon': {
+                const sides = 5;
+                for (let i = 0; i < sides; i++) {
+                    const a = -Math.PI / 2 + (i * 2 * Math.PI / sides);
+                    const px = cx + r * Math.cos(a);
+                    const py = cy + r * Math.sin(a);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                break;
+            }
+
+            case 'heptagon': {
+                const sides = 7;
+                for (let i = 0; i < sides; i++) {
+                    const a = -Math.PI / 2 + (i * 2 * Math.PI / sides);
+                    const px = cx + r * Math.cos(a);
+                    const py = cy + r * Math.sin(a);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                break;
+            }
+
+            case 'octagon': {
+                const sides = 8;
+                const startAngle = Math.PI / 8;
+                for (let i = 0; i < sides; i++) {
+                    const a = startAngle + (i * 2 * Math.PI / sides);
+                    const px = cx + r * Math.cos(a);
+                    const py = cy + r * Math.sin(a);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                break;
+            }
+
+            case 'love':
+            case 'heart': {
+                const topY = cy - h * 0.36;
+                const botY = cy + h * 0.44;
+                ctx.moveTo(cx, topY + h * 0.22);
+                ctx.bezierCurveTo(cx, topY - h * 0.12, cx - w * 0.54, topY - h * 0.14, cx - w * 0.52, topY + h * 0.28);
+                ctx.bezierCurveTo(cx - w * 0.48, topY + h * 0.54, cx - w * 0.22, topY + h * 0.68, cx, botY);
+                ctx.bezierCurveTo(cx + w * 0.22, topY + h * 0.68, cx + w * 0.48, topY + h * 0.54, cx + w * 0.52, topY + h * 0.28);
+                ctx.bezierCurveTo(cx + w * 0.54, topY - h * 0.14, cx, topY - h * 0.12, cx, topY + h * 0.22);
+                ctx.closePath();
+                break;
+            }
+
+            case 'star': {
+                const outerR = r;
+                const innerR = r * 0.48;
+                for (let i = 0; i < 10; i++) {
+                    const rad = i % 2 === 0 ? outerR : innerR;
+                    const a = -Math.PI / 2 + (i * Math.PI / 5);
+                    const px = cx + rad * Math.cos(a);
+                    const py = cy + rad * Math.sin(a);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                break;
+            }
+
+            case 'diamond':
+                ctx.moveTo(cx, cy - hh);
+                ctx.lineTo(cx + hw, cy);
+                ctx.lineTo(cx, cy + hh);
+                ctx.lineTo(cx - hw, cy);
+                ctx.closePath();
+                break;
+
+            case 'rounded-rect':
+            default:
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.roundRect(cx - hw, cy - hh, w, h, Math.min(24, Math.min(w, h) * 0.25));
+                } else {
+                    this.roundRect(ctx, cx - hw, cy - hh, w, h, 16);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Render Studio Zoom / Magnify / Highlight Lens
+     */
+    renderMagnifyLens(clip, drawX, drawY, drawW, drawH, width, height, isDefaultFull, relTime, duration) {
+        let cx = isDefaultFull ? width * 0.5 : (drawX + drawW / 2);
+        let cy = isDefaultFull ? height * 0.5 : (drawY + drawH / 2);
+        const lw = isDefaultFull ? 360 : drawW;
+        const lh = isDefaultFull ? 360 : drawH;
+
+        // Motion Tracking: Cursor Telemetry Follow
+        if (clip.trackingMode === 'cursor' && clip.startTime !== undefined) {
+            const curPoint = this.getInterpolatedCursor(clip.startTime + relTime);
+            if (curPoint && curPoint.x !== undefined && curPoint.y !== undefined) {
+                cx = curPoint.x * width;
+                cy = curPoint.y * height;
+            }
+        }
+
+        const shape = clip.shape || 'circle';
+        const mag = Math.max(1.0, Math.min(5.0, clip.magnification !== undefined ? clip.magnification : 2.0));
+        const focalX = cx + (clip.focalOffsetX || 0);
+        const focalY = cy + (clip.focalOffsetY || 0);
+
+        const borderColor = clip.borderColor || clip.color || '#00f0ff';
+        const borderWidth = clip.borderWidth !== undefined ? clip.borderWidth : 4;
+        const borderStyle = clip.borderStyle || 'glow';
+        const blurOutline = Math.max(0, clip.blurOutline || 0);
+        const spotlightDim = Math.max(0, Math.min(0.95, clip.spotlightDim !== undefined ? clip.spotlightDim : 0.0));
+        const lensCurvature = clip.lensCurvature !== false;
+
+        // 1. Snapshot canvas contents for magnification sampling
+        if (!this.scratchCanvas) {
+            this.scratchCanvas = document.createElement('canvas');
+        }
+        if (this.scratchCanvas.width !== width || this.scratchCanvas.height !== height) {
+            this.scratchCanvas.width = width;
+            this.scratchCanvas.height = height;
+        }
+        const sCtx = this.scratchCanvas.getContext('2d');
+        sCtx.drawImage(this.canvas, 0, 0);
+
+        // 2. Spotlight Background Dimming (Highlights lens area)
+        if (spotlightDim > 0) {
+            this.ctx.save();
+            this.ctx.fillStyle = `rgba(0, 0, 0, ${spotlightDim})`;
+            this.ctx.fillRect(0, 0, width, height);
+            this.ctx.restore();
+        }
+
+        const op = Math.max(0.05, Math.min(1.0, clip.opacity !== undefined ? clip.opacity : 1.0));
+        this.ctx.save();
+        this.ctx.globalAlpha = op;
+
+        // 3. Clipped Magnified Content
+        this.ctx.save();
+        this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+        this.ctx.clip();
+
+        // Sample underlying media at magnification zoom factor
+        const srcW = lw / mag;
+        const srcH = lh / mag;
+        const srcX = focalX - srcW / 2;
+        const srcY = focalY - srcH / 2;
+        this.ctx.drawImage(this.scratchCanvas, srcX, srcY, srcW, srcH, cx - lw / 2, cy - lh / 2, lw, lh);
+
+        // Glass Specular Curved Reflection Highlight
+        if (lensCurvature) {
+            const grad = this.ctx.createLinearGradient(cx - lw / 2, cy - lh / 2, cx + lw / 2, cy + lh / 2);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+            grad.addColorStop(0.35, 'rgba(255, 255, 255, 0.06)');
+            grad.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0.12)');
+            this.ctx.fillStyle = grad;
+            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+            this.ctx.fill();
+        }
+        this.ctx.restore();
+
+        // 4. Blur Outline / Edge Feather
+        if (blurOutline > 0) {
+            this.ctx.save();
+            this.ctx.shadowColor = borderColor;
+            this.ctx.shadowBlur = blurOutline;
+            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+            this.ctx.strokeStyle = borderColor;
+            this.ctx.lineWidth = Math.max(1, blurOutline * 0.35);
+            this.ctx.stroke();
+            this.ctx.restore();
+        }
+
+        // 5. Border & Outline Styling
+        if (borderWidth > 0 && borderStyle !== 'none') {
+            this.ctx.save();
+            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+            this.ctx.lineWidth = borderWidth;
+            if (borderStyle === 'glow') {
+                this.ctx.strokeStyle = borderColor;
+                this.ctx.shadowColor = borderColor;
+                this.ctx.shadowBlur = Math.min(25, borderWidth * 3.5);
+            } else if (borderStyle === 'metallic') {
+                const mGrad = this.ctx.createLinearGradient(cx - lw / 2, cy - lh / 2, cx + lw / 2, cy + lh / 2);
+                mGrad.addColorStop(0, '#ffffff');
+                mGrad.addColorStop(0.28, '#94a3b8');
+                mGrad.addColorStop(0.72, '#e2e8f0');
+                mGrad.addColorStop(1, '#334155');
+                this.ctx.strokeStyle = mGrad;
+                this.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.shadowBlur = 6;
+            } else if (borderStyle === 'dashed') {
+                this.ctx.strokeStyle = borderColor;
+                this.ctx.setLineDash([10, 6]);
+            } else {
+                this.ctx.strokeStyle = borderColor;
+            }
+            this.ctx.stroke();
+            this.ctx.restore();
+        }
+
+        // 6. Optional text label badge
+        if (clip.text && clip.text.trim()) {
+            this.drawGuideBadge(cx, cy + lh / 2 + 18, clip.text, false);
+        }
+
         this.ctx.restore();
     }
 
