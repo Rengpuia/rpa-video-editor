@@ -121,7 +121,7 @@ To run RPA Video Editor locally:
 
 ---
 
-## 📦 Building the Windows Installer & Portable Packages
+## 📦 Building the Windows Installer & Native Executable
 
 ### Local Native Desktop Build
 To compile the native Windows GUI executable (`RPA_Video_Editor.exe`) locally:
@@ -129,7 +129,7 @@ To compile the native Windows GUI executable (`RPA_Video_Editor.exe`) locally:
 build_native_desktop.bat
 ```
 
-### Full Windows Installer & Portable ZIP Build
+### Full Windows Installer Build
 If Inno Setup 6 is installed on your workstation:
 ```cmd
 build_installer.bat
@@ -140,10 +140,10 @@ or via PowerShell:
 ```
 This generates:
 1. `exports\RPA_Video_Editor_Setup_v2.0.0.exe` (Windows Installer)
-2. `exports\RPA_Video_Editor_v2.0.0_Portable.zip` (Zero-install Portable Package)
+2. `RPA_Video_Editor.exe` (Native Standalone Desktop Executable)
 
 ### Automated GitHub Actions CI/CD
-Pushing to GitHub triggers `.github/workflows/build-installer.yml`, which automatically builds and publishes all desktop packages to [GitHub Releases](https://github.com/Rengpuia/rpa-video-editor/releases).
+Pushing to GitHub triggers `.github/workflows/build-installer.yml`, which automatically builds and publishes the installer package to [GitHub Releases](https://github.com/Rengpuia/rpa-video-editor/releases).
 
 ---
 

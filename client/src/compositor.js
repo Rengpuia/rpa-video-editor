@@ -216,12 +216,12 @@ class RpaCompositor {
             v.playsInline = true;
             v.preload = 'auto';
             v.addEventListener('loadeddata', () => {
-                if (window.rpaStudio && !window.rpaStudio.isPlaying) {
+                if (window.rpaStudio && !window.rpaStudio.isPlaying && !window.rpaStudio.isDraggingPlayhead) {
                     window.rpaStudio.compositor.renderFrame(window.rpaStudio.timeline, window.rpaStudio.playheadTime);
                 }
             });
             v.addEventListener('seeked', () => {
-                if (window.rpaStudio && !window.rpaStudio.isPlaying) {
+                if (window.rpaStudio && !window.rpaStudio.isPlaying && !window.rpaStudio.isDraggingPlayhead) {
                     window.rpaStudio.compositor.renderFrame(window.rpaStudio.timeline, window.rpaStudio.playheadTime);
                 }
             });
@@ -370,9 +370,13 @@ class RpaCompositor {
         const bg = this.projectSettings.backgroundColor;
         if (!bg || bg === 'transparent') {
             this.ctx.clearRect(0, 0, width, height);
-            if (this.canvas) this.canvas.classList.add('canvas-transparent');
+            if (this.canvas && !this.canvas.classList.contains('canvas-transparent')) {
+                this.canvas.classList.add('canvas-transparent');
+            }
         } else {
-            if (this.canvas) this.canvas.classList.remove('canvas-transparent');
+            if (this.canvas && this.canvas.classList.contains('canvas-transparent')) {
+                this.canvas.classList.remove('canvas-transparent');
+            }
             this.ctx.fillStyle = bg;
             this.ctx.fillRect(0, 0, width, height);
         }
@@ -578,10 +582,15 @@ class RpaCompositor {
                         videoEl.currentTime = targetMediaTime;
                     }
 
-                    if (videoEl.readyState >= 2) {
+                    // Anti-Flicker Studio Video Rendering:
+                    // When scrubbing the playhead, videoEl.readyState may momentarily report HAVE_METADATA (1)
+                    // while decoding the new target timestamp. As long as videoEl.videoWidth > 0, the element
+                    // has valid decoded frame buffers. Using drawImage(videoEl) paints the active/last decoded frame
+                    // continuously with ZERO black boxes, flashes, or "Loading media..." flicker!
+                    if (videoEl.videoWidth > 0) {
                         const cr = clip.crop || { top: 0, right: 0, bottom: 0, left: 0 };
-                        const srcW = videoEl.videoWidth || width;
-                        const srcH = videoEl.videoHeight || height;
+                        const srcW = videoEl.videoWidth;
+                        const srcH = videoEl.videoHeight;
 
                         const sx = cr.left;
                         const sy = cr.top;
@@ -594,15 +603,12 @@ class RpaCompositor {
                         if (fx.chromaKey) {
                             this.applyChromaKey(drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
                         }
+                    } else if (videoEl.readyState >= 2) {
+                        this.ctx.drawImage(videoEl, 0, 0, videoEl.videoWidth || width, videoEl.videoHeight || height, drawX, drawY, drawW, drawH);
                     } else {
-                        // Clean neutral dark placeholder while decoding video frame
+                        // Clean neutral dark placeholder only if video has never loaded metadata
                         this.ctx.fillStyle = '#0f172a';
                         this.ctx.fillRect(drawX, drawY, drawW, drawH);
-                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-                        this.ctx.font = '14px sans-serif';
-                        this.ctx.textAlign = 'center';
-                        this.ctx.textBaseline = 'middle';
-                        this.ctx.fillText(clip.title || 'Loading media...', drawX + drawW / 2, drawY + drawH / 2);
                     }
                 } else {
                     // Clean neutral clip placeholder

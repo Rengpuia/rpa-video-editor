@@ -12,27 +12,11 @@ Write-Host "  Version: 2.0.0 (Cleanroom Open Source)" -ForegroundColor Gray
 Write-Host "=======================================================" -ForegroundColor Cyan
 
 # 1. Compile native executable first
-Write-Host "[1/3] Compiling native desktop executable..." -ForegroundColor Cyan
+Write-Host "[1/2] Compiling native desktop executable..." -ForegroundColor Cyan
 & (Join-Path $rootDir "build_native_desktop.ps1")
 
-# 2. Package Portable ZIP distribution
-Write-Host "`n[2/3] Packaging Portable ZIP release..." -ForegroundColor Cyan
-$exportsDir = Join-Path $rootDir "exports"
-if (-not (Test-Path $exportsDir)) { New-Item -ItemType Directory -Path $exportsDir | Out-Null }
-$zipPath = Join-Path $exportsDir "RPA_Video_Editor_v2.0.0_Portable.zip"
-if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-
-$itemsToZip = @(
-    "client", "server", "RPA_Video_Editor.exe", "main.js", "preload.js",
-    "mcp_server.js", "package.json", "LICENSE", "README.md",
-    "unblock_app.bat", "unblock_app.ps1", "start_rpa_video_editor.bat", "start_rpa_video_editor.ps1"
-) | ForEach-Object { Join-Path $rootDir $_ } | Where-Object { Test-Path $_ }
-
-Compress-Archive -Path $itemsToZip -DestinationPath $zipPath -CompressionLevel Optimal
-Write-Host "[SUCCESS] Portable ZIP package created: $zipPath" -ForegroundColor Green
-
-# 3. Check for Inno Setup compiler
-Write-Host "`n[3/3] Checking Inno Setup 6 compiler..." -ForegroundColor Cyan
+# 2. Check for Inno Setup compiler
+Write-Host "`n[2/2] Checking Inno Setup 6 compiler..." -ForegroundColor Cyan
 $isccPaths = @(
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
     "C:\Program Files\Inno Setup 6\ISCC.exe",

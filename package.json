@@ -12,7 +12,6 @@
     "start:server": "node server/server.js",
     "mcp": "node mcp_server.js",
     "dist": "electron-builder --win",
-    "dist:portable": "electron-builder --win portable",
     "dist:dir": "electron-builder --win dir",
     "build:native": "powershell -ExecutionPolicy Bypass -File ./build_native_desktop.ps1",
     "build:installer": "powershell -ExecutionPolicy Bypass -File ./build_installer.ps1",
@@ -28,15 +27,11 @@
     },
     "win": {
       "target": [
-        "portable",
         "nsis"
       ],
       "icon": "client/favicon.ico",
       "artifactName": "RPA-Video-Editor-${version}-${target}.${ext}",
       "legalTrademarks": "Open Source (MIT License)"
-    },
-    "portable": {
-      "artifactName": "RPA-Video-Editor-v${version}-Portable.exe"
     },
     "nsis": {
       "oneClick": false,

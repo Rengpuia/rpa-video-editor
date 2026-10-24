@@ -634,6 +634,47 @@ class RpaTimeline {
         return caption;
     }
 
+    /**
+     * Compute the exact timestamp where timeline media content finishes.
+     * Prevents rendering trailing black empty frames on export.
+     */
+    getContentEnd() {
+        let maxEnd = 0.0;
+        for (const clip of this.clips) {
+            const end = (clip.startTime || 0) + (clip.duration || 0);
+            if (end > maxEnd) maxEnd = end;
+        }
+        for (const c of (this.captions || [])) {
+            const end = (c.startTime || 0) + (c.duration || 0);
+            if (end > maxEnd) maxEnd = end;
+        }
+        return maxEnd;
+    }
+
+    /**
+     * Determine strict export boundaries:
+     * - If In/Out selection exists: [selectionStart, selectionEnd]
+     * - Otherwise: [0.0, getContentEnd()] (eliminating trailing black void)
+     */
+    getExportRange() {
+        if (this.selectionStart !== null && this.selectionEnd !== null && this.selectionEnd > this.selectionStart) {
+            return {
+                start: Math.max(0, this.selectionStart),
+                end: Math.max(this.selectionStart + 0.1, this.selectionEnd),
+                duration: this.selectionEnd - this.selectionStart,
+                isCustomRange: true
+            };
+        }
+        const contentEnd = this.getContentEnd();
+        const end = contentEnd > 0 ? contentEnd : this.totalDuration;
+        return {
+            start: 0.0,
+            end: Math.max(0.1, end),
+            duration: Math.max(0.1, end),
+            isCustomRange: false
+        };
+    }
+
     updateTotalDuration() {
         let maxTime = 15.0;
         for (const clip of this.clips) {
@@ -647,7 +688,7 @@ class RpaTimeline {
             const end = c.startTime + c.duration;
             if (end > maxTime) maxTime = end;
         }
-        this.totalDuration = Math.ceil(maxTime + 5.0);
+        this.totalDuration = Math.ceil(maxTime + 3.0);
     }
 
     findSnapPoint(candidateTime, excludeClipId = null, ignoreNearTime = null) {

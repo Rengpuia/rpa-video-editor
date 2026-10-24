@@ -33,10 +33,10 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -File ./build_native_desktop.ps1
 
-      - name: Build Electron Standalone Desktop Executables (NSIS Setup & Standalone Portable)
+      - name: Build Electron Standalone Desktop Executable (NSIS Setup)
         run: |
           npm install --save-dev electron electron-builder
-          npx electron-builder --win nsis portable --publish never
+          npx electron-builder --win nsis --publish never
 
       - name: Verify Generated Desktop Artifacts
         run: |
@@ -48,7 +48,6 @@ jobs:
           name: RPA_Video_Editor_v2.0.0_Windows
           path: |
             exports/RPA-Video-Editor-v2.0.0-Setup.exe
-            exports/RPA-Video-Editor-v2.0.0-Portable.exe
 
       - name: Create GitHub Release (On Tag)
         if: startsWith(github.ref, 'refs/tags/')
@@ -56,7 +55,6 @@ jobs:
         with:
           files: |
             exports/RPA-Video-Editor-v2.0.0-Setup.exe
-            exports/RPA-Video-Editor-v2.0.0-Portable.exe
           name: RPA Video Editor ${{ github.ref_name }} (Offline Desktop Edition)
           body: |
             ## RPA Video Editor - Studio Pro v2.0.0 (Native Offline Desktop Edition)

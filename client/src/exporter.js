@@ -16,7 +16,25 @@ class RpaExporter {
         const fps = options.fps || compositor.projectSettings.fps || 30;
         const bitrate = options.bitrate || 6000000;
         const format = options.format || 'webm';
-        const totalDuration = timeline.totalDuration;
+
+        // Auto-detect exact timeline content boundaries (eliminates trailing black void)
+        let exportStart = 0.0;
+        let exportEnd = 0.0;
+
+        if (options.startTime !== undefined && options.endTime !== undefined && options.endTime > options.startTime) {
+            exportStart = Math.max(0, options.startTime);
+            exportEnd = options.endTime;
+        } else if (typeof timeline.getExportRange === 'function') {
+            const range = timeline.getExportRange();
+            exportStart = range.start;
+            exportEnd = range.end;
+        } else {
+            const contentEnd = timeline.getContentEnd ? timeline.getContentEnd() : 0;
+            exportStart = 0.0;
+            exportEnd = contentEnd > 0 ? contentEnd : timeline.totalDuration;
+        }
+
+        const totalExportDuration = Math.max(0.1, exportEnd - exportStart);
         const frameInterval = 1000 / fps;
 
         // Dedicated Offscreen Rendering Canvas for chosen resolution
@@ -110,7 +128,7 @@ class RpaExporter {
                     try { audioCtx.close(); } catch (_) {}
                 }
 
-                resolve({ blob, url, width: targetWidth, height: targetHeight, duration: totalDuration });
+                resolve({ blob, url, width: targetWidth, height: targetHeight, duration: totalExportDuration });
             };
 
             recorder.start(100);
@@ -150,10 +168,10 @@ class RpaExporter {
             };
 
             const runRenderLoop = async () => {
-                let currentTime = 0;
+                let currentTime = exportStart;
                 const dt = 1 / fps;
 
-                while (currentTime <= totalDuration) {
+                while (currentTime <= exportEnd + 0.0001) {
                     // 1. Wait for video decoders to stabilize at current timestamp
                     await seekAllActiveVideos(currentTime);
 
@@ -164,7 +182,8 @@ class RpaExporter {
                     exportCtx.drawImage(bufferCanvas, 0, 0);
 
                     if (onProgress) {
-                        onProgress(Math.min(100, (currentTime / totalDuration) * 100));
+                        const elapsed = Math.max(0, currentTime - exportStart);
+                        onProgress(Math.min(100, (elapsed / totalExportDuration) * 100));
                     }
 
                     currentTime += dt;

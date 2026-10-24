@@ -389,7 +389,7 @@ class RpaStudioApp {
 
         // 9. Multi-Resolution Export Modal
         document.getElementById('btnOpenExportModal').onclick = () => {
-            document.getElementById('exportModal').classList.remove('hidden');
+            this.openExportModal();
         };
         document.getElementById('btnExecuteExport').onclick = () => this.executeCustomExport();
         // Properties Sub-Menu Dropdown & Accordion
@@ -2486,14 +2486,17 @@ class RpaStudioApp {
             const time = getTimeFromPointer(e.clientX);
             this.seek(time);
 
+            let latestScrubTime = time;
             let scrubRaf = null;
             const onPointerMove = (moveEvent) => {
                 if (!this.isDraggingPlayhead) return;
                 moveEvent.preventDefault();
-                const newTime = getTimeFromPointer(moveEvent.clientX);
+                latestScrubTime = getTimeFromPointer(moveEvent.clientX);
                 if (!scrubRaf) {
                     scrubRaf = requestAnimationFrame(() => {
-                        this.seek(newTime);
+                        if (latestScrubTime !== null) {
+                            this.seek(latestScrubTime);
+                        }
                         scrubRaf = null;
                     });
                 }
@@ -2513,6 +2516,9 @@ class RpaStudioApp {
                 if (scrubRaf) {
                     cancelAnimationFrame(scrubRaf);
                     scrubRaf = null;
+                }
+                if (latestScrubTime !== null) {
+                    this.seek(latestScrubTime);
                 }
                 window.removeEventListener('pointermove', onPointerMove);
                 window.removeEventListener('pointerup', onPointerUp);
@@ -4193,8 +4199,8 @@ class RpaStudioApp {
     seek(time) {
         this.playheadTime = Math.max(0, Math.min(this.timeline.totalDuration, time));
         this.updatePlayheadPosition();
-        this.compositor.renderFrame(this.timeline, this.playheadTime, this.isPlaying);
         this.compositor.syncMediaPlayback(this.timeline, this.playheadTime, this.isPlaying);
+        this.compositor.renderFrame(this.timeline, this.playheadTime, this.isPlaying);
     }
 
     updatePlayheadPosition() {
@@ -5049,7 +5055,10 @@ class RpaStudioApp {
                 this.seek(this.playheadTime + deltaSeconds);
                 this.lastFrameTimestamp = timestamp;
 
-                if (this.playheadTime >= this.timeline.totalDuration) {
+                const endLimit = (this.timeline.getContentEnd && this.timeline.getContentEnd() > 0)
+                    ? this.timeline.getContentEnd()
+                    : this.timeline.totalDuration;
+                if (this.playheadTime >= endLimit) {
                     this.togglePlayback();
                     this.seek(0);
                 }
@@ -5109,7 +5118,7 @@ class RpaStudioApp {
             }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
                 e.preventDefault();
-                document.getElementById('exportModal').classList.remove('hidden');
+                this.openExportModal();
                 return;
             }
 
@@ -5341,7 +5350,40 @@ class RpaStudioApp {
         }
     }
 
+    openExportModal() {
+        const modal = document.getElementById('exportModal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+
+        // Auto-detect timeline content duration to show user exact export boundaries
+        const range = this.timeline.getExportRange ? this.timeline.getExportRange() : { start: 0, end: this.timeline.totalDuration, duration: this.timeline.totalDuration, isCustomRange: false };
+        const lblDuration = document.getElementById('lblExportDetectedDuration');
+        const lblDetail = document.getElementById('lblExportSpanDetail');
+
+        if (lblDuration && lblDetail) {
+            if (this.timeline.clips.length === 0) {
+                lblDuration.innerText = '0.0s (Empty)';
+                lblDuration.style.color = '#ef4444';
+                lblDetail.innerText = '⚠️ Timeline has no clips. Add videos, images, or tools before exporting.';
+            } else if (range.isCustomRange) {
+                lblDuration.innerText = `${range.duration.toFixed(1)}s (Selection)`;
+                lblDuration.style.color = '#10b981';
+                lblDetail.innerText = `Exporting marked range: ${range.start.toFixed(1)}s → ${range.end.toFixed(1)}s`;
+            } else {
+                lblDuration.innerText = `${range.duration.toFixed(1)}s (Ends at last clip)`;
+                lblDuration.style.color = '#38bdf8';
+                lblDetail.innerText = `Auto-detected: exports from 0.0s to ${range.end.toFixed(1)}s (stops at the end of the last clip, no trailing black frames).`;
+            }
+        }
+    }
+
     async executeCustomExport() {
+        if (this.timeline.clips.length === 0) {
+            alert('Cannot export: The timeline has no media clips. Please add media or tools first.');
+            return;
+        }
+
+        const range = this.timeline.getExportRange ? this.timeline.getExportRange() : { start: 0, end: this.timeline.totalDuration, duration: this.timeline.totalDuration };
         const resVal = document.getElementById('selExportResolution').value;
         let width = 1920;
         let height = 1080;
@@ -5374,10 +5416,18 @@ class RpaStudioApp {
             const exportResult = await window.RpaExporter.exportTimeline(
                 this.timeline,
                 this.compositor,
-                { width, height, fps, bitrate, format },
+                {
+                    width,
+                    height,
+                    fps,
+                    bitrate,
+                    format,
+                    startTime: range.start,
+                    endTime: range.end
+                },
                 (pct) => {
                     progressBar.style.width = `${Math.floor(pct)}%`;
-                    statusLabel.innerText = `Rendering ${width}x${height} (${fps}fps): ${Math.floor(pct)}%`;
+                    statusLabel.innerText = `Rendering ${width}x${height} (${fps}fps): ${Math.floor(pct)}% [0s - ${range.end.toFixed(1)}s]`;
                 }
             );
 
