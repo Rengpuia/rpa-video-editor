@@ -16,12 +16,13 @@
     "dist:dir": "electron-builder --win dir",
     "build:native": "powershell -ExecutionPolicy Bypass -File ./build_native_desktop.ps1",
     "build:installer": "powershell -ExecutionPolicy Bypass -File ./build_installer.ps1",
-    "test": "node --check client/src/app.js && node --check client/src/compositor.js && node --check client/src/timeline.js && node --check client/src/recorder.js && node --check server/server.js && node --check server/mcp_handler.js && node --check mcp_server.js && node --check main.js && node --check preload.js"
+    "test": "node --check client/src/app.js && node --check client/src/compositor.js && node --check client/src/timeline.js && node --check client/src/recorder.js && node --check server/server.js && node --check server/paths.js && node --check server/mcp_handler.js && node --check mcp_server.js && node --check main.js && node --check preload.js"
   },
   "build": {
     "appId": "com.rpa.videoeditor",
     "productName": "RPA Video Editor",
     "copyright": "Copyright © 2026 K Vanlalrengpuia",
+    "asar": false,
     "directories": {
       "output": "exports"
     },

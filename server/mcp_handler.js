@@ -10,12 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT_DIR = path.resolve(__dirname, '..');
-const PROJECTS_DIR = path.join(ROOT_DIR, 'projects');
-const EXPORTS_DIR = path.join(ROOT_DIR, 'exports');
-
-if (!fs.existsSync(PROJECTS_DIR)) fs.mkdirSync(PROJECTS_DIR, { recursive: true });
-if (!fs.existsSync(EXPORTS_DIR)) fs.mkdirSync(EXPORTS_DIR, { recursive: true });
+const { BASE_DIR, PROJECTS_DIR, EXPORTS_DIR } = require('./paths');
 
 const MCP_TOOLS = [
     {

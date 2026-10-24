@@ -13,14 +13,9 @@ const { handleMcpRequest } = require('./mcp_handler');
 
 const PORT = process.env.PORT || 3800;
 const HOST = '127.0.0.1';
+const { BASE_DIR, PROJECTS_DIR, EXPORTS_DIR } = require('./paths');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const CLIENT_DIR = path.join(ROOT_DIR, 'client');
-const PROJECTS_DIR = path.join(ROOT_DIR, 'projects');
-const EXPORTS_DIR = path.join(ROOT_DIR, 'exports');
-
-// Ensure storage directories exist
-if (!fs.existsSync(PROJECTS_DIR)) fs.mkdirSync(PROJECTS_DIR, { recursive: true });
-if (!fs.existsSync(EXPORTS_DIR)) fs.mkdirSync(EXPORTS_DIR, { recursive: true });
 
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -128,6 +123,7 @@ function handleApiRequest(req, res, url) {
 
     // 2. List Projects
     if (req.method === 'GET' && url.pathname === '/api/projects') {
+        if (!fs.existsSync(PROJECTS_DIR)) return sendJson(res, 200, { projects: [] });
         const files = fs.readdirSync(PROJECTS_DIR).filter(f => f.endsWith('.rpavideo'));
         const projects = files.map(filename => {
             const fullPath = path.join(PROJECTS_DIR, filename);
