@@ -1,0 +1,258 @@
+{
+  "title": "Untitled",
+  "duration": 20,
+  "tracks": [
+    {
+      "id": 4,
+      "name": "Track 4 (Overlays)",
+      "type": "overlay",
+      "visible": true,
+      "locked": false,
+      "muted": false
+    },
+    {
+      "id": 3,
+      "name": "Track 3 (Subtitles)",
+      "type": "caption",
+      "visible": true,
+      "locked": false,
+      "muted": false
+    },
+    {
+      "id": 2,
+      "name": "Track 2 (Video)",
+      "type": "video",
+      "visible": true,
+      "locked": false,
+      "muted": false
+    },
+    {
+      "id": 1,
+      "name": "Track 1 (Audio)",
+      "type": "audio",
+      "visible": true,
+      "locked": false,
+      "muted": false
+    }
+  ],
+  "clips": [
+    {
+      "id": "clip_1792833313238_qss4",
+      "title": "Welcome Screen Recording.mp4",
+      "type": "video",
+      "trackId": 2,
+      "startTime": 0,
+      "duration": 10,
+      "sourceUrl": null,
+      "telemetry": [
+        {
+          "time": 1,
+          "x": 0.25,
+          "y": 0.35,
+          "type": "mousemove"
+        },
+        {
+          "time": 2.2,
+          "x": 0.5,
+          "y": 0.5,
+          "type": "mousedown"
+        },
+        {
+          "time": 4.5,
+          "x": 0.75,
+          "y": 0.4,
+          "type": "mousemove"
+        },
+        {
+          "time": 6,
+          "x": 0.3,
+          "y": 0.6,
+          "type": "mousedown"
+        }
+      ],
+      "scale": 1,
+      "opacity": 1,
+      "volume": 1,
+      "text": "",
+      "hasAudio": true,
+      "scaleX": 1,
+      "scaleY": 1,
+      "aspectRatioLocked": true,
+      "aspectRatioPreset": "16:9",
+      "transitionIn": "none",
+      "transitionInDuration": 0.8,
+      "transitionOut": "none",
+      "transitionOutDuration": 0.8,
+      "behavior": "none",
+      "visualEffects": {
+        "colorGrade": {
+          "lift": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "gamma": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "gain": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "temperature": 0,
+          "tint": 0,
+          "hue": 0,
+          "autoAdjusted": false
+        },
+        "chromaKey": false,
+        "chromaColor": "#00ff00",
+        "chromaTolerance": 0.28,
+        "vignette": 0,
+        "glow": 0,
+        "filmGrain": 0,
+        "scanlines": false,
+        "glitch": 0,
+        "pixelate": 0,
+        "invert": false,
+        "sepia": 0,
+        "borderRadius": 0,
+        "dropShadow": true,
+        "brightness": 100,
+        "contrast": 100,
+        "saturation": 100,
+        "deviceFrame": "none"
+      },
+      "audioEffects": {
+        "noiseGate": false,
+        "volumeLeveling": false,
+        "fadeIn": 0,
+        "fadeOut": 0
+      },
+      "crop": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "xOffset": 0,
+      "yOffset": 0,
+      "rotation": 0,
+      "keyframes": []
+    },
+    {
+      "id": "clip_1792833313238_8y8k",
+      "title": "Title Header",
+      "type": "callout",
+      "trackId": 4,
+      "startTime": 0.5,
+      "duration": 4.5,
+      "sourceUrl": null,
+      "telemetry": [],
+      "scale": 1,
+      "opacity": 1,
+      "volume": 1,
+      "text": "RPA VIDEO EDITOR STUDIO PRO",
+      "hasAudio": false,
+      "scaleX": 1,
+      "scaleY": 1,
+      "aspectRatioLocked": true,
+      "aspectRatioPreset": "16:9",
+      "transitionIn": "none",
+      "transitionInDuration": 0.8,
+      "transitionOut": "none",
+      "transitionOutDuration": 0.8,
+      "behavior": "none",
+      "visualEffects": {
+        "colorGrade": {
+          "lift": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "gamma": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "gain": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "temperature": 0,
+          "tint": 0,
+          "hue": 0,
+          "autoAdjusted": false
+        },
+        "chromaKey": false,
+        "chromaColor": "#00ff00",
+        "chromaTolerance": 0.28,
+        "vignette": 0,
+        "glow": 0,
+        "filmGrain": 0,
+        "scanlines": false,
+        "glitch": 0,
+        "pixelate": 0,
+        "invert": false,
+        "sepia": 0,
+        "borderRadius": 0,
+        "dropShadow": true,
+        "brightness": 100,
+        "contrast": 100,
+        "saturation": 100,
+        "deviceFrame": "none"
+      },
+      "audioEffects": {
+        "noiseGate": false,
+        "volumeLeveling": false,
+        "fadeIn": 0,
+        "fadeOut": 0
+      },
+      "crop": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "xOffset": 0,
+      "yOffset": 0,
+      "rotation": 0,
+      "keyframes": []
+    }
+  ],
+  "markers": [
+    {
+      "id": "marker_1792833313239",
+      "time": 0,
+      "label": "Intro"
+    },
+    {
+      "id": "marker_1792833313239",
+      "time": 5,
+      "label": "Step 1: Capture"
+    }
+  ],
+  "captions": [
+    {
+      "id": "cap_1792833313239_j55w",
+      "startTime": 0.5,
+      "duration": 4,
+      "text": "Welcome to RPA Video Editor Pro"
+    },
+    {
+      "id": "cap_1792833313239_kops",
+      "startTime": 5,
+      "duration": 4.5,
+      "text": "Multi-layer timeline with Studio features"
+    }
+  ],
+  "projectSettings": {
+    "name": "1080p FHD (16:9)",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "backgroundColor": "#0f1115"
+  }
+}

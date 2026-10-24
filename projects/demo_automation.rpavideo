@@ -1,0 +1,114 @@
+{
+  "title": "RPA Studio Showcase & Tutorial",
+  "duration": 25,
+  "projectSettings": {
+    "name": "1080p FHD (16:9)",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "backgroundColor": "#0f1115"
+  },
+  "tracks": [
+    { "id": 4, "name": "Track 4 (Overlays)", "type": "overlay", "visible": true, "locked": false, "muted": false },
+    { "id": 3, "name": "Track 3 (Subtitles)", "type": "caption", "visible": true, "locked": false, "muted": false },
+    { "id": 2, "name": "Track 2 (Video)", "type": "video", "visible": true, "locked": false, "muted": false },
+    { "id": 1, "name": "Track 1 (Audio)", "type": "audio", "visible": true, "locked": false, "muted": false }
+  ],
+  "clips": [
+    {
+      "id": "clip_demo_screen",
+      "title": "Automated Invoice Processing.mp4",
+      "type": "video",
+      "trackId": 2,
+      "startTime": 0.0,
+      "duration": 22.0,
+      "sourceUrl": null,
+      "scale": 1.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0,
+      "aspectRatioLocked": true,
+      "opacity": 1.0,
+      "volume": 1.0,
+      "hasAudio": true,
+      "transitionIn": "fade",
+      "transitionInDuration": 0.8,
+      "transitionOut": "fade",
+      "transitionOutDuration": 0.8,
+      "visualEffects": {
+        "borderRadius": 10,
+        "dropShadow": true,
+        "brightness": 102,
+        "contrast": 108,
+        "saturation": 105,
+        "vignette": 20,
+        "filmGrain": 0,
+        "scanlines": false,
+        "glow": 0,
+        "pixelate": 0,
+        "sepia": 0,
+        "colorGrade": {
+          "temperature": 4,
+          "tint": 0
+        }
+      },
+      "keyframes": [
+        { "id": "kf_1", "timeOffset": 0.0, "property": "scale", "value": 1.0, "easing": "easeInOut" },
+        { "id": "kf_2", "timeOffset": 5.0, "property": "scale", "value": 1.25, "easing": "easeInOut" },
+        { "id": "kf_3", "timeOffset": 11.0, "property": "scale", "value": 1.25, "easing": "easeInOut" },
+        { "id": "kf_4", "timeOffset": 15.0, "property": "scale", "value": 1.0, "easing": "easeInOut" }
+      ],
+      "telemetry": [
+        { "time": 0.5, "x": 0.20, "y": 0.25, "type": "mousemove" },
+        { "time": 2.0, "x": 0.32, "y": 0.42, "type": "mousemove" },
+        { "time": 3.2, "x": 0.35, "y": 0.45, "type": "mousedown" },
+        { "time": 5.0, "x": 0.55, "y": 0.50, "type": "mousemove" },
+        { "time": 7.5, "x": 0.68, "y": 0.38, "type": "mousemove" },
+        { "time": 9.0, "x": 0.70, "y": 0.40, "type": "mousedown" },
+        { "time": 12.0, "x": 0.45, "y": 0.65, "type": "mousemove" },
+        { "time": 15.5, "x": 0.50, "y": 0.75, "type": "mousedown" },
+        { "time": 18.0, "x": 0.80, "y": 0.85, "type": "mousemove" }
+      ]
+    },
+    {
+      "id": "clip_demo_header",
+      "title": "Title Header",
+      "type": "callout",
+      "trackId": 4,
+      "startTime": 0.5,
+      "duration": 5.0,
+      "behavior": "popup",
+      "text": "RPA STUDIO AUTOMATION SUITE"
+    },
+    {
+      "id": "clip_demo_speech",
+      "title": "Speech Bubble",
+      "type": "callout",
+      "trackId": 4,
+      "startTime": 7.0,
+      "duration": 4.5,
+      "behavior": "slide",
+      "text": "Select Invoice Table & Extract Data"
+    },
+    {
+      "id": "clip_demo_keystroke",
+      "title": "Keystroke",
+      "type": "callout",
+      "trackId": 4,
+      "startTime": 14.0,
+      "duration": 4.0,
+      "text": "Ctrl + Shift + S"
+    }
+  ],
+  "markers": [
+    { "id": "m1", "time": 0.0, "label": "1. Ingestion" },
+    { "id": "m2", "time": 6.5, "label": "2. Data Extraction" },
+    { "id": "m3", "time": 13.5, "label": "3. Validation" },
+    { "id": "m4", "time": 20.0, "label": "4. Finished" }
+  ],
+  "captions": [
+    { "id": "c1", "startTime": 0.5, "duration": 4.5, "text": "Welcome to RPA Video Editor - Studio Pro Studio Pro Cleanroom Edition" },
+    { "id": "c2", "startTime": 5.5, "duration": 5.5, "text": "Zooming into the active workflow step using Bezier easing curve" },
+    { "id": "c3", "startTime": 11.5, "duration": 5.0, "text": "Cursor telemetry ripples highlight user click interactions" },
+    { "id": "c4", "startTime": 17.0, "duration": 5.0, "text": "Ready to export in up to 4K UHD or Vertical Shorts" }
+  ]
+}

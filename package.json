@@ -1,0 +1,32 @@
+{
+  "name": "rpa-video-editor",
+  "version": "2.0.0",
+  "description": "RPA Video Editor - Cleanroom Open-Source Screen Recording & Studio Video Editing Suite with MCP Support",
+  "main": "server/server.js",
+  "bin": {
+    "rpa-mcp": "./mcp_server.js"
+  },
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js",
+    "mcp": "node mcp_server.js",
+    "build:installer": "powershell -ExecutionPolicy Bypass -File ./build_installer.ps1",
+    "test": "node --check client/src/app.js && node --check client/src/compositor.js && node --check client/src/timeline.js && node --check client/src/recorder.js && node --check server/server.js && node --check server/mcp_handler.js && node --check mcp_server.js"
+  },
+  "keywords": [
+    "video-editor",
+    "screen-recorder",
+    "cleanroom",
+    "open-source",
+    "timeline",
+    "studio",
+    "mcp",
+    "model-context-protocol"
+  ],
+  "author": "K Vanlalrengpuia <rengakhiangte@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rengpuia/rpa-video-editor.git"
+  }
+}

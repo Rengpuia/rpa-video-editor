@@ -1,0 +1,864 @@
+/* Multi-track Timeline Styles - Studio Pro Edition */
+.timeline-section {
+    height: 310px;
+    background-color: var(--bg-dark);
+    border-top: 2px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+    position: relative;
+    transition: height 0.2s ease;
+}
+
+.timeline-section.compact {
+    height: 210px;
+}
+
+.timeline-section.tall {
+    height: 440px;
+}
+
+.timeline-toolbar {
+    height: 44px;
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+}
+
+.timeline-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tool-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+.tool-btn:hover {
+    background-color: var(--bg-panel-hover);
+    color: #fff;
+}
+.tool-btn.active {
+    background-color: var(--accent-color);
+    color: white;
+}
+.tool-btn-danger:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.timeline-scroll-container {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: auto;
+    position: relative;
+    background-color: var(--bg-darker);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Timeline Markers & Ruler */
+.timeline-ruler {
+    height: 28px;
+    background-color: #16181d;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+/* Pull-to-Extend Timeline Resizer Bar */
+.timeline-resizer {
+    height: 9px;
+    background: #181b20;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+    cursor: ns-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 95;
+    position: relative;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.15s ease;
+}
+
+.timeline-resizer:hover, .timeline-resizer.resizing {
+    background: #3b82f6;
+}
+
+.timeline-resizer-handle {
+    width: 44px;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.35);
+    pointer-events: none;
+    transition: background 0.15s ease, width 0.15s ease;
+}
+
+.timeline-resizer:hover .timeline-resizer-handle,
+.timeline-resizer.resizing .timeline-resizer-handle {
+    background: #ffffff;
+    width: 60px;
+}
+
+.ruler-tick {
+    position: absolute;
+    bottom: 0;
+    height: 8px;
+    width: 1px;
+    background-color: var(--border-color);
+    pointer-events: none;
+}
+.ruler-label {
+    position: absolute;
+    top: 4px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: monospace;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.timeline-marker {
+    position: absolute;
+    top: 2px;
+    width: 10px;
+    height: 12px;
+    background-color: #3b82f6;
+    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+    cursor: pointer;
+    z-index: 25;
+}
+
+/* In/Out Selection Overlay (Studio Range) */
+.timeline-selection-range {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(59, 130, 246, 0.18);
+    border-left: 2px solid #10b981;
+    border-right: 2px solid #ef4444;
+    pointer-events: none;
+    z-index: 22;
+    display: none;
+}
+
+.tracks-container {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    min-height: 220px;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+.timeline-track {
+    height: 56px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background-color: var(--track-bg);
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.track-header {
+    width: 140px;
+    height: 100%;
+    background-color: var(--bg-panel);
+    border-right: 1px solid var(--border-color);
+    position: sticky;
+    left: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    box-shadow: 2px 0 6px rgba(0,0,0,0.3);
+}
+
+.track-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+
+.track-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.track-btn {
+    cursor: pointer;
+    font-size: 11px;
+    opacity: 0.75;
+    transition: opacity 0.1s, transform 0.1s;
+}
+.track-btn:hover {
+    opacity: 1;
+    transform: scale(1.15);
+}
+.track-btn-del {
+    color: #ef4444;
+    font-weight: bold;
+    margin-left: auto;
+}
+
+.track-locked {
+    opacity: 0.65;
+    background-color: #14161c;
+}
+
+.track-content {
+    flex: 1;
+    height: 100%;
+    position: relative;
+}
+
+/* Timeline Clip Item */
+.timeline-clip {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    border-radius: 5px;
+    color: white;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: grab;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+}
+.timeline-clip:active {
+    cursor: grabbing;
+}
+.timeline-clip.selected {
+    border: 2px solid #fff;
+    box-shadow: 0 0 14px rgba(59, 130, 246, 0.9);
+}
+
+.clip-body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    pointer-events: none;
+}
+.clip-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+}
+.clip-fx-badge {
+    font-size: 9px;
+    color: #fef08a;
+    font-weight: 700;
+    opacity: 0.9;
+    letter-spacing: 0.3px;
+}
+
+/* Clip Trim Handles */
+.clip-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    background: rgba(255,255,255,0.2);
+    cursor: ew-resize;
+    display: none;
+}
+.timeline-clip:hover .clip-handle,
+.timeline-clip.selected .clip-handle {
+    display: block;
+}
+.clip-handle-left { left: 0; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.clip-handle-right { right: 0; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.clip-handle:hover { background: rgba(255,255,255,0.6); }
+
+.clip-video { background: linear-gradient(135deg, #1d4ed8, #2563eb); }
+.clip-audio { background: linear-gradient(135deg, #047857, #059669); }
+.clip-callout { background: linear-gradient(135deg, #b45309, #d97706); }
+
+/* Playhead Scrubber (Studio Style with In/Out Points) */
+.playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    z-index: 100;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.playhead-line {
+    position: absolute;
+    top: 26px;
+    bottom: 0;
+    left: -12px;
+    width: 24px;
+    pointer-events: auto;
+    cursor: ew-resize;
+    z-index: 102;
+    display: flex;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.playhead-line::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 11px;
+    width: 2px;
+    background-color: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.9);
+    pointer-events: none;
+}
+
+.playhead-line:hover::after {
+    background-color: #ff5555;
+    box-shadow: 0 0 10px rgba(255, 85, 85, 1);
+    width: 3px;
+    left: 10.5px;
+}
+
+.playhead-head-container {
+    position: absolute;
+    top: 1px;
+    left: -22px;
+    width: 44px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: ew-resize;
+    pointer-events: auto;
+    z-index: 106;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.playhead-head-container:active {
+    cursor: grabbing;
+}
+
+/* Studio Signature Playhead: Center Red, Left Green (In), Right Red (Out) */
+.playhead-center {
+    width: 18px;
+    height: 24px;
+    background: linear-gradient(180deg, #f87171 0%, #dc2626 65%, #991b1b 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 65%, 50% 100%, 0 65%);
+    cursor: ew-resize;
+    filter: drop-shadow(0 2px 5px rgba(0,0,0,0.6));
+    border-top: 1px solid rgba(255,255,255,0.4);
+    z-index: 107;
+    transition: filter 0.1s ease;
+}
+.playhead-center:hover {
+    filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.9));
+    background: linear-gradient(180deg, #fca5a5 0%, #ef4444 65%, #b91c1c 100%);
+}
+
+.playhead-in-handle {
+    width: 12px;
+    height: 20px;
+    background: linear-gradient(135deg, #34d399, #059669);
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+    cursor: w-resize;
+    margin-right: 1px;
+    filter: drop-shadow(-1px 1px 3px rgba(0,0,0,0.4));
+    z-index: 108;
+    transition: transform 0.1s;
+}
+.playhead-in-handle:hover {
+    background: linear-gradient(135deg, #6ee7b7, #10b981);
+    transform: scale(1.15);
+}
+
+.playhead-out-handle {
+    width: 12px;
+    height: 20px;
+    background: linear-gradient(225deg, #f87171, #dc2626);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+    cursor: e-resize;
+    margin-left: 1px;
+    filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.4));
+    z-index: 108;
+    transition: transform 0.1s;
+}
+.playhead-out-handle:hover {
+    background: linear-gradient(225deg, #fca5a5, #ef4444);
+    transform: scale(1.15);
+}
+
+/* ====================================================
+   Studio-GRADE DIRECT TIMELINE EFFECT CONTROLS
+   Transitions, Behaviors, Animations & Effect Chips
+   ==================================================== */
+
+/* 1. Visual Transition Wedges (Entrance Left & Exit Right) */
+.clip-transition-wedge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding: 0 4px;
+    box-sizing: border-box;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    user-select: none;
+}
+
+.clip-transition-wedge.wedge-in {
+    left: 0;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.42) 0%, rgba(245, 158, 11, 0.16) 100%);
+    border-right: 2px solid #f59e0b;
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+.clip-transition-wedge.wedge-in:hover {
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.65) 0%, rgba(245, 158, 11, 0.28) 100%);
+    border-right-color: #fbbf24;
+}
+
+.clip-transition-wedge.wedge-out {
+    right: 0;
+    background: linear-gradient(270deg, rgba(245, 158, 11, 0.42) 0%, rgba(245, 158, 11, 0.16) 100%);
+    border-left: 2px solid #f59e0b;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    justify-content: flex-end;
+}
+.clip-transition-wedge.wedge-out:hover {
+    background: linear-gradient(270deg, rgba(245, 158, 11, 0.65) 0%, rgba(245, 158, 11, 0.28) 100%);
+    border-left-color: #fbbf24;
+}
+
+/* Intermediate Multiple Transitions In Timeline Content */
+.clip-transition-wedge.wedge-intermediate {
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.48) 0%, rgba(99, 102, 241, 0.25) 100%);
+    border: 1px solid #8b5cf6;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    z-index: 26;
+    cursor: move;
+}
+.clip-transition-wedge.wedge-intermediate:hover {
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.72) 0%, rgba(99, 102, 241, 0.42) 100%);
+    border-color: #a78bfa;
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
+}
+.clip-transition-wedge.wedge-intermediate .wedge-label {
+    color: #ede9fe;
+}
+.clip-transition-wedge.wedge-intermediate .wedge-dur {
+    color: #c4b5fd;
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+.wedge-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #fef3c7;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    pointer-events: none;
+    font-size: 9.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wedge-dur {
+    background: rgba(0,0,0,0.45);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 8.5px;
+    color: #fde68a;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.wedge-del-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    font-size: 9px;
+    font-weight: bold;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 35;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    transition: transform 0.1s, background 0.1s;
+}
+.clip-transition-wedge.wedge-in .wedge-del-btn {
+    margin-right: 4px;
+}
+.clip-transition-wedge.wedge-out .wedge-del-btn {
+    margin-left: 4px;
+}
+.wedge-del-btn:hover {
+    background: #dc2626;
+    transform: scale(1.25);
+}
+
+/* Transition Wedge Direct Drag-To-Resize Handles */
+.wedge-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    cursor: ew-resize;
+    z-index: 20;
+    pointer-events: auto;
+    background: transparent;
+}
+.wedge-resize-handle.handle-in {
+    right: -4px;
+}
+.wedge-resize-handle.handle-out {
+    left: -4px;
+}
+.wedge-resize-handle.handle-intermediate {
+    right: -4px;
+}
+.wedge-resize-handle.handle-intermediate:hover {
+    background: rgba(167, 139, 250, 0.7);
+}
+.wedge-resize-handle:hover {
+    background: rgba(251, 191, 36, 0.6);
+}
+
+/* 2. Visual Behavior Drawer Bar */
+.clip-behavior-bar {
+    position: absolute;
+    bottom: 2px;
+    left: 8px;
+    right: 8px;
+    height: 16px;
+    background: linear-gradient(90deg, rgba(234, 179, 8, 0.35), rgba(202, 138, 4, 0.25));
+    border: 1px solid rgba(234, 179, 8, 0.65);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 5px;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #fef08a;
+    cursor: pointer;
+    z-index: 12;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.clip-behavior-bar:hover {
+    background: linear-gradient(90deg, rgba(234, 179, 8, 0.55), rgba(202, 138, 4, 0.45));
+    border-color: #facc15;
+    box-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+}
+.behavior-icon {
+    font-size: 10px;
+    margin-right: 3px;
+}
+.behavior-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.behavior-del-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.85);
+    color: white;
+    font-size: 8px;
+    cursor: pointer;
+    margin-left: 4px;
+    pointer-events: auto;
+}
+.clip-behavior-bar:hover .behavior-del-btn {
+    display: inline-flex;
+}
+.behavior-del-btn:hover {
+    background: #dc2626;
+    transform: scale(1.2);
+}
+
+/* 3. Animation Arrow & Draggable Keyframes (Studio Style) */
+.clip-animation-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 14px;
+    background: rgba(147, 51, 234, 0.38);
+    border: 1px dashed rgba(168, 85, 247, 0.85);
+    border-radius: 3px;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2px;
+}
+.clip-animation-arrow::after {
+    content: '➔';
+    position: absolute;
+    right: -6px;
+    font-size: 11px;
+    color: #c084fc;
+    font-weight: bold;
+}
+
+.clip-keyframe-diamond {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    width: 11px;
+    height: 11px;
+    background: #a855f7;
+    border: 1.5px solid #ffffff;
+    box-shadow: 0 0 6px rgba(168, 85, 247, 0.9);
+    cursor: ew-resize;
+    z-index: 18;
+    pointer-events: auto;
+    transition: transform 0.1s, background 0.1s;
+}
+.clip-keyframe-diamond:hover {
+    background: #c084fc;
+    transform: translate(-50%, -50%) rotate(45deg) scale(1.35);
+    box-shadow: 0 0 10px rgba(192, 132, 252, 1);
+}
+.clip-keyframe-diamond.dragging {
+    background: #facc15;
+    border-color: #000;
+    transform: translate(-50%, -50%) rotate(45deg) scale(1.4);
+}
+
+/* Animations & Arrow System */
+.studio-timeline-arrow,
+.animation-arrow {
+    position: absolute;
+    bottom: 3px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    z-index: 22;
+    cursor: pointer;
+    user-select: none;
+    pointer-events: auto;
+}
+
+.studio-timeline-arrow .arrow-tail {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+    border-radius: 50%;
+    background: #0284c7;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 4px rgba(0,0,0,0.6);
+    cursor: ew-resize;
+    z-index: 3;
+    transition: transform 0.1s, background 0.1s;
+    margin-right: -2px;
+}
+.studio-timeline-arrow .arrow-tail:hover {
+    transform: scale(1.3);
+    background: #38bdf8;
+}
+
+.studio-timeline-arrow .arrow-body {
+    flex: 1;
+    height: 10px;
+    background: linear-gradient(90deg, #0284c7, #0ea5e9);
+    border-top: 1.5px solid rgba(255,255,255,0.7);
+    border-bottom: 1.5px solid rgba(255,255,255,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0 4px;
+    cursor: grab;
+    z-index: 2;
+}
+.studio-timeline-arrow .arrow-body:active {
+    cursor: grabbing;
+}
+
+.studio-timeline-arrow .arrow-label {
+    font-size: 8.5px;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+.studio-timeline-arrow .arrow-head {
+    width: 0;
+    height: 0;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-left: 11px solid #0ea5e9;
+    filter: drop-shadow(1px 0 2px rgba(0,0,0,0.5));
+    cursor: ew-resize;
+    z-index: 3;
+    margin-left: -1px;
+    transition: transform 0.1s;
+}
+.studio-timeline-arrow .arrow-head:hover {
+    transform: scale(1.3);
+    border-left-color: #38bdf8;
+}
+
+/* Studio Signature Selected Animation Arrow (Amber / Yellow Glow) */
+.studio-timeline-arrow.selected .arrow-tail {
+    background: #f59e0b;
+    border-color: #ffffff;
+    box-shadow: 0 0 8px #f59e0b, 0 0 2px #f59e0b;
+}
+.studio-timeline-arrow.selected .arrow-body {
+    background: linear-gradient(90deg, #d97706, #f59e0b);
+    border-top-color: #fef3c7;
+    border-bottom-color: #fef3c7;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+}
+.studio-timeline-arrow.selected .arrow-head {
+    border-left-color: #f59e0b;
+    filter: drop-shadow(0 0 5px #f59e0b);
+}
+.studio-timeline-arrow.selected .arrow-label {
+    color: #fffbeb;
+}
+
+.studio-timeline-arrow .arrow-del-btn {
+    display: none;
+    position: absolute;
+    top: -14px;
+    right: 0;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #ef4444;
+    color: white;
+    font-size: 8px;
+    font-weight: bold;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 4;
+}
+.studio-timeline-arrow:hover .arrow-del-btn,
+.studio-timeline-arrow.selected .arrow-del-btn {
+    display: flex;
+}
+.studio-timeline-arrow .arrow-del-btn:hover {
+    background: #dc2626;
+    transform: scale(1.2);
+}
+
+/* 4. Interactive Timeline Visual Effects Badges / Chips */
+.clip-fx-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+    pointer-events: auto;
+}
+
+.timeline-fx-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 5px;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 3px;
+    font-size: 8.5px;
+    font-weight: 700;
+    color: #e2e8f0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.timeline-fx-chip:hover {
+    background: rgba(59, 130, 246, 0.35);
+    border-color: #60a5fa;
+    color: #ffffff;
+}
+.fx-chip-del {
+    color: #94a3b8;
+    font-size: 8px;
+    margin-left: 2px;
+    transition: color 0.1s;
+}
+.fx-chip-del:hover {
+    color: #ef4444;
+}
+
+/* 5. Inspector Flash Highlight when clicked from Timeline */
+@keyframes sectionHighlightFlash {
+    0% { background: rgba(59, 130, 246, 0.4); box-shadow: 0 0 12px rgba(59, 130, 246, 0.8); }
+    100% { background: var(--bg-dark); box-shadow: none; }
+}
+.inspector-section-highlight {
+    animation: sectionHighlightFlash 1.4s ease-out;
+}

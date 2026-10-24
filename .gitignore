@@ -1,0 +1,8 @@
+node_modules/
+exports/*.exe
+exports/*.webm
+exports/*.mp4
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
