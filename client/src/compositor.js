@@ -718,6 +718,11 @@ class RpaCompositor {
             }
         }
 
+        // 5b. Studio Center Alignment Rulers / Smart Guides during media dragging
+        if (this.alignmentGuides) {
+            this.renderAlignmentGuides(width, height);
+        }
+
         // 6. Empty Timeline Splash
         if (activeClips.length === 0) {
             this.ctx.fillStyle = '#475569';
@@ -4076,6 +4081,171 @@ class RpaCompositor {
         this.ctx.fillStyle = 'rgba(59, 130, 246, 0.8)';
         this.ctx.fill();
         this.ctx.stroke();
+
+        this.ctx.restore();
+    }
+
+    /**
+     * Draw high-precision glowing alignment badge for center rulers
+     */
+    drawGuideBadge(x, y, text, isGold = false) {
+        this.ctx.save();
+        this.ctx.font = 'bold 12px "Inter", "Segoe UI", system-ui, sans-serif';
+        const textMetrics = this.ctx.measureText(text);
+        const padX = 10;
+        const w = textMetrics.width + padX * 2;
+        const h = 24;
+        const bx = Math.round(x - w / 2);
+        const by = Math.round(y - h / 2);
+
+        // Glowing pill background
+        this.ctx.shadowColor = isGold ? 'rgba(245, 158, 11, 0.6)' : 'rgba(0, 245, 255, 0.5)';
+        this.ctx.shadowBlur = 10;
+        this.ctx.fillStyle = 'rgba(10, 15, 28, 0.92)';
+        this.ctx.strokeStyle = isGold ? '#f59e0b' : '#00f5ff';
+        this.ctx.lineWidth = 1.5;
+
+        this.ctx.beginPath();
+        if (typeof this.ctx.roundRect === 'function') {
+            this.ctx.roundRect(bx, by, w, h, 6);
+        } else {
+            this.ctx.rect(bx, by, w, h);
+        }
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        // High contrast text
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = isGold ? '#fef08a' : '#e0f2fe';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(text, x, y);
+        this.ctx.restore();
+    }
+
+    /**
+     * Studio Center Alignment Rulers / Smart Guides
+     * Renders magnetic center lines with tick marks, glowing reticles, and coordinate badges
+     */
+    renderAlignmentGuides(width, height) {
+        const guides = this.alignmentGuides;
+        if (!guides) return;
+
+        this.ctx.save();
+        const centerX = guides.centerX || (width / 2);
+        const centerY = guides.centerY || (height / 2);
+        const isSnappedX = !!guides.vertical;
+        const isSnappedY = !!guides.horizontal;
+
+        // 1. Vertical Center Ruler Line
+        this.ctx.save();
+        if (isSnappedX) {
+            this.ctx.strokeStyle = '#00f5ff';
+            this.ctx.shadowColor = 'rgba(0, 245, 255, 0.85)';
+            this.ctx.shadowBlur = 12;
+            this.ctx.lineWidth = 2.0;
+            this.ctx.setLineDash([8, 4]);
+        } else {
+            // Subtle dotted guide while dragging
+            this.ctx.strokeStyle = 'rgba(0, 245, 255, 0.25)';
+            this.ctx.lineWidth = 1.0;
+            this.ctx.setLineDash([4, 6]);
+        }
+        this.ctx.beginPath();
+        this.ctx.moveTo(centerX, 0);
+        this.ctx.lineTo(centerX, height);
+        this.ctx.stroke();
+
+        // Tick marks along vertical center line
+        if (isSnappedX) {
+            this.ctx.setLineDash([]);
+            this.ctx.lineWidth = 1.5;
+            for (let ty = 60; ty < height; ty += 120) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(centerX - 8, ty);
+                this.ctx.lineTo(centerX + 8, ty);
+                this.ctx.stroke();
+            }
+        }
+        this.ctx.restore();
+
+        // 2. Horizontal Center Ruler Line
+        this.ctx.save();
+        if (isSnappedY) {
+            this.ctx.strokeStyle = '#00f5ff';
+            this.ctx.shadowColor = 'rgba(0, 245, 255, 0.85)';
+            this.ctx.shadowBlur = 12;
+            this.ctx.lineWidth = 2.0;
+            this.ctx.setLineDash([8, 4]);
+        } else {
+            // Subtle dotted guide while dragging
+            this.ctx.strokeStyle = 'rgba(0, 245, 255, 0.25)';
+            this.ctx.lineWidth = 1.0;
+            this.ctx.setLineDash([4, 6]);
+        }
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, centerY);
+        this.ctx.lineTo(width, centerY);
+        this.ctx.stroke();
+
+        // Tick marks along horizontal center line
+        if (isSnappedY) {
+            this.ctx.setLineDash([]);
+            this.ctx.lineWidth = 1.5;
+            for (let tx = 80; tx < width; tx += 120) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(tx, centerY - 8);
+                this.ctx.lineTo(tx, centerY + 8);
+                this.ctx.stroke();
+            }
+        }
+        this.ctx.restore();
+
+        // 3. Clip Center Pivot Indicator
+        if (guides.clipBounds) {
+            const cb = guides.clipBounds;
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.arc(cb.cx, cb.cy, 5, 0, Math.PI * 2);
+            this.ctx.fillStyle = (isSnappedX || isSnappedY) ? '#00f5ff' : 'rgba(56, 189, 248, 0.85)';
+            this.ctx.shadowColor = '#00f5ff';
+            this.ctx.shadowBlur = 8;
+            this.ctx.fill();
+            this.ctx.restore();
+        }
+
+        // 4. Center Alignment Badges & Dual-Axis Reticle
+        if (isSnappedX && isSnappedY) {
+            // Both axes locked to center: Gold/Cyan Master Reticle at (centerX, centerY)
+            this.ctx.save();
+            this.ctx.strokeStyle = '#f59e0b';
+            this.ctx.shadowColor = 'rgba(245, 158, 11, 0.9)';
+            this.ctx.shadowBlur = 14;
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(centerX, centerY, 18, 0, Math.PI * 2);
+            this.ctx.stroke();
+
+            this.ctx.beginPath();
+            this.ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+            this.ctx.fillStyle = '#f59e0b';
+            this.ctx.fill();
+
+            // Inner crosshair
+            this.ctx.beginPath();
+            this.ctx.moveTo(centerX - 28, centerY);
+            this.ctx.lineTo(centerX + 28, centerY);
+            this.ctx.moveTo(centerX, centerY - 28);
+            this.ctx.lineTo(centerX, centerY + 28);
+            this.ctx.stroke();
+            this.ctx.restore();
+
+            this.drawGuideBadge(centerX, centerY - 42, '★ PERFECT CENTER (960 × 540)', true);
+        } else if (isSnappedX) {
+            this.drawGuideBadge(centerX, 36, '╂ CENTER X (960px)', false);
+        } else if (isSnappedY) {
+            this.drawGuideBadge(105, centerY, '╂ CENTER Y (540px)', false);
+        }
 
         this.ctx.restore();
     }

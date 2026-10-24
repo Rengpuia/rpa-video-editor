@@ -35,6 +35,7 @@ class RpaStudioApp {
 
         this.initUI();
         this.setupPlayheadDragging();
+        this.setupTimelineWheelZoom();
         this.setupKeyboardShortcuts();
         this.setupCanvasInteraction();
         this.setupDemoContent();
@@ -129,13 +130,12 @@ class RpaStudioApp {
         this.initTimelineResizer();
 
         // Zoom Slider
-        document.getElementById('rngTimelineZoom').oninput = (e) => {
-            this.timeline.pixelsPerSecond = parseInt(e.target.value, 10);
-            this.updateTimelineRuler();
-            this.renderTimeline();
-            this.updatePlayheadPosition();
-            this.updateSelectionRangeUI();
-        };
+        const rngTimelineZoom = document.getElementById('rngTimelineZoom');
+        if (rngTimelineZoom) {
+            rngTimelineZoom.oninput = (e) => {
+                this.setTimelineZoom(parseInt(e.target.value, 10));
+            };
+        }
 
         // Fullscreen Toggle
         document.getElementById('btnFullscreen').onclick = () => {
@@ -2667,6 +2667,81 @@ class RpaStudioApp {
         });
     }
 
+    /**
+     * Studio Timeline Zoom Controller
+     * Smoothly scales timeline zoom (5 to 250 px/sec) while anchoring to mouse cursor or playhead
+     */
+    setTimelineZoom(newZoom, anchorClientX = null) {
+        const scrollArea = document.getElementById('timelineScrollArea');
+        const rngZoom = document.getElementById('rngTimelineZoom');
+        const clampedZoom = Math.max(5, Math.min(250, Math.round(newZoom)));
+
+        if (clampedZoom === this.timeline.pixelsPerSecond) return;
+
+        const oldPps = this.timeline.pixelsPerSecond;
+
+        // Calculate anchor time to keep the point under the cursor stationary
+        let anchorTime = null;
+        let anchorRelX = 0;
+        if (scrollArea) {
+            const rect = scrollArea.getBoundingClientRect();
+            if (anchorClientX !== null && anchorClientX >= rect.left && anchorClientX <= rect.right) {
+                anchorRelX = anchorClientX - rect.left;
+                anchorTime = Math.max(0, (anchorRelX + scrollArea.scrollLeft - 140) / oldPps);
+            } else {
+                anchorTime = this.playheadTime;
+                anchorRelX = (anchorTime * oldPps + 140) - scrollArea.scrollLeft;
+            }
+        }
+
+        // Apply new zoom factor
+        this.timeline.pixelsPerSecond = clampedZoom;
+        if (rngZoom) rngZoom.value = clampedZoom;
+
+        // Re-render ruler, tracks, playhead, and selection overlays
+        this.updateTimelineRuler();
+        this.renderTimeline();
+        this.updatePlayheadPosition();
+        this.updateSelectionRangeUI();
+
+        // Adjust scrollLeft to maintain stable cursor anchor position
+        if (scrollArea && anchorTime !== null) {
+            const targetScrollLeft = Math.round((anchorTime * clampedZoom + 140) - anchorRelX);
+            scrollArea.scrollLeft = Math.max(0, targetScrollLeft);
+        }
+    }
+
+    /**
+     * Mouse Scroll Zoom and Smooth Horizontal Panning for Timeline
+     * Ctrl + Mouse Wheel: High-speed precision zoom anchored to cursor
+     * Normal Wheel: Smooth horizontal track navigation
+     */
+    setupTimelineWheelZoom() {
+        const timelineSec = document.getElementById('timelineSection');
+        const scrollArea = document.getElementById('timelineScrollArea');
+        if (!timelineSec || !scrollArea) return;
+
+        timelineSec.addEventListener('wheel', (e) => {
+            // 1. Ctrl + Wheel: Smooth Zoom In / Zoom Out
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+                const currentZoom = this.timeline.pixelsPerSecond || 45;
+                const targetZoom = Math.round(currentZoom * zoomFactor);
+                this.setTimelineZoom(targetZoom, e.clientX);
+            } else if (!e.shiftKey) {
+                // 2. Normal Wheel: Smooth Horizontal Navigation
+                // If tracks fit vertically or wheel is predominantly vertical, pan horizontally
+                if (scrollArea.scrollHeight <= scrollArea.clientHeight + 15 || Math.abs(e.deltaX) > 0) {
+                    if (Math.abs(e.deltaX) === 0 && Math.abs(e.deltaY) > 0) {
+                        e.preventDefault();
+                        scrollArea.scrollLeft += e.deltaY;
+                    }
+                }
+            }
+        }, { passive: false });
+    }
+
     updateSelectionRangeUI() {
         const rangeEl = document.getElementById('selectionRange');
         if (this.timeline.selectionStart !== null && this.timeline.selectionEnd !== null && this.timeline.selectionStart < this.timeline.selectionEnd) {
@@ -4168,7 +4243,14 @@ class RpaStudioApp {
         ruler.style.width = `${minWidth}px`;
         if (tracksContainer) tracksContainer.style.width = `${minWidth}px`;
 
-        const stepSec = this.timeline.pixelsPerSecond >= 60 ? 1 : (this.timeline.pixelsPerSecond >= 30 ? 2 : 5);
+        let stepSec = 1;
+        if (this.timeline.pixelsPerSecond >= 80) stepSec = 1;
+        else if (this.timeline.pixelsPerSecond >= 40) stepSec = 2;
+        else if (this.timeline.pixelsPerSecond >= 20) stepSec = 5;
+        else if (this.timeline.pixelsPerSecond >= 10) stepSec = 10;
+        else if (this.timeline.pixelsPerSecond >= 6) stepSec = 30;
+        else stepSec = 60;
+
         const fragment = document.createDocumentFragment();
 
         for (let t = 0; t <= this.timeline.totalDuration; t += stepSec) {
@@ -4180,7 +4262,9 @@ class RpaStudioApp {
             const label = document.createElement('div');
             label.className = 'ruler-label';
             label.style.left = `${left}px`;
-            label.innerText = `${t}s`;
+            const m = Math.floor(t / 60);
+            const s = Math.round(t % 60);
+            label.innerText = t >= 60 ? (s === 0 ? `${m}m` : `${m}m ${s}s`) : `${t}s`;
 
             fragment.appendChild(tick);
             fragment.appendChild(label);
@@ -5026,6 +5110,23 @@ class RpaStudioApp {
             if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
                 e.preventDefault();
                 document.getElementById('exportModal').classList.remove('hidden');
+                return;
+            }
+
+            // Timeline Zoom Shortcuts: Ctrl + Plus, Ctrl + Minus, Ctrl + 0
+            if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+                e.preventDefault();
+                this.setTimelineZoom(Math.round((this.timeline.pixelsPerSecond || 45) * 1.25));
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && (e.key === '-' || e.key === '_')) {
+                e.preventDefault();
+                this.setTimelineZoom(Math.round((this.timeline.pixelsPerSecond || 45) / 1.25));
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+                e.preventDefault();
+                this.setTimelineZoom(45);
                 return;
             }
             if (e.key === '?' || (e.shiftKey && e.key === '/')) {
@@ -6983,8 +7084,40 @@ class RpaStudioApp {
             }
 
             if (interactionMode === 'translate') {
-                selClip.xOffset = Math.round(startClipState.xOffset + deltaX);
-                selClip.yOffset = Math.round(startClipState.yOffset + deltaY);
+                let candX = Math.round(startClipState.xOffset + deltaX);
+                let candY = Math.round(startClipState.yOffset + deltaY);
+
+                // Studio Magnetic Center Alignment & Snapping
+                // Snaps cleanly to Canvas Center X (0px) and Center Y (0px) within 18px threshold
+                const snapThreshold = 18;
+                let isSnappedX = false;
+                let isSnappedY = false;
+
+                if (Math.abs(candX) <= snapThreshold) {
+                    candX = 0;
+                    isSnappedX = true;
+                }
+                if (Math.abs(candY) <= snapThreshold) {
+                    candY = 0;
+                    isSnappedY = true;
+                }
+
+                selClip.xOffset = candX;
+                selClip.yOffset = candY;
+
+                // Provide alignment guides state to the compositor
+                const bounds = this.compositor.getClipCanvasBounds(selClip);
+                this.compositor.alignmentGuides = {
+                    vertical: isSnappedX,
+                    horizontal: isSnappedY,
+                    centerX: canvas.width / 2,
+                    centerY: canvas.height / 2,
+                    clipBounds: bounds,
+                    offsetX: candX,
+                    offsetY: candY,
+                    isDragging: true
+                };
+
                 const pX = document.getElementById('propXOffset');
                 const pY = document.getElementById('propYOffset');
                 if (pX) pX.value = selClip.xOffset;
@@ -7086,6 +7219,10 @@ class RpaStudioApp {
             if (isInteracting) {
                 isInteracting = false;
                 interactionMode = null;
+                if (this.compositor.alignmentGuides) {
+                    this.compositor.alignmentGuides = null;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
                 canvas.style.cursor = this.compositor.activeCanvasTool === 'hand' ? 'grab' : (this.compositor.activeCanvasTool === 'crop' ? 'crosshair' : 'default');
                 this.timeline.saveSnapshot();
                 this.markDirty(true);
