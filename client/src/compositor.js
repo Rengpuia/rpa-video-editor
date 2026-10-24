@@ -386,6 +386,10 @@ class RpaCompositor {
             timeline.tracks ? timeline.tracks.filter(t => t.visible).map(t => t.id) : [1, 2, 3, 4]
         );
 
+        // Cache timeline and playhead time for dynamic cross-track telemetry & motion tracking
+        this.lastTimeline = timeline;
+        this.lastPlayheadTime = time;
+
         // Active clips on visible tracks, sorted by track id ascending (layering order)
         const activeClips = timeline.clips
             .filter(c => time >= c.startTime && time <= (c.startTime + c.duration) && visibleTrackIds.has(c.trackId))
@@ -549,8 +553,11 @@ class RpaCompositor {
                 this.ctx.translate(-(drawX + drawW / 2), -(drawY + drawH / 2));
             }
 
-            // Apply Transition Geometric Clipping (Wipe / Circle / Flash / Flare) across clips
-            this.applyTransitionClipping(clip, relTime, clip.duration, drawX, drawY, drawW, drawH);
+            // Apply Transition Geometric Clipping (Wipe / Circle / Flash / Flare) across video & media clips
+            // Callouts are excluded so transitions only apply to the text typography itself
+            if (clip.type !== 'callout') {
+                this.applyTransitionClipping(clip, relTime, clip.duration, drawX, drawY, drawW, drawH);
+            }
 
             // Drop shadow with enhanced power, blur and depth (for media/video clips; callouts render their own styled typography shadows)
             if (fx.dropShadow && clip.type !== 'callout') {
@@ -597,14 +604,18 @@ class RpaCompositor {
                         const sw = Math.max(1, srcW - cr.left - cr.right);
                         const sh = Math.max(1, srcH - cr.top - cr.bottom);
 
-                        this.ctx.drawImage(videoEl, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
-
-                        // Chroma Key (Green Screen Removal)
+                        // Render Video Frame (with Offscreen Alpha Composited Chroma Keying)
                         if (fx.chromaKey) {
-                            this.applyChromaKey(drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
+                            this.renderChromaKeyed(videoEl, sx, sy, sw, sh, drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
+                        } else {
+                            this.ctx.drawImage(videoEl, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
                         }
                     } else if (videoEl.readyState >= 2) {
-                        this.ctx.drawImage(videoEl, 0, 0, videoEl.videoWidth || width, videoEl.videoHeight || height, drawX, drawY, drawW, drawH);
+                        if (fx.chromaKey) {
+                            this.renderChromaKeyed(videoEl, 0, 0, videoEl.videoWidth || width, videoEl.videoHeight || height, drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
+                        } else {
+                            this.ctx.drawImage(videoEl, 0, 0, videoEl.videoWidth || width, videoEl.videoHeight || height, drawX, drawY, drawW, drawH);
+                        }
                     } else {
                         // Clean neutral dark placeholder only if video has never loaded metadata
                         this.ctx.fillStyle = '#0f172a';
@@ -654,11 +665,11 @@ class RpaCompositor {
                         const sw = Math.max(1, srcW - cr.left - cr.right);
                         const sh = Math.max(1, srcH - cr.top - cr.bottom);
 
-                        this.ctx.drawImage(imgEl, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
-
-                        // Chroma Key
+                        // Render Image Frame (with Offscreen Alpha Composited Chroma Keying)
                         if (fx.chromaKey) {
-                            this.applyChromaKey(drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
+                            this.renderChromaKeyed(imgEl, sx, sy, sw, sh, drawX, drawY, drawW, drawH, fx.chromaColor || '#00ff00', fx.chromaTolerance || 0.28);
+                        } else {
+                            this.ctx.drawImage(imgEl, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
                         }
                     } else {
                         // Loading placeholder
@@ -1991,7 +2002,9 @@ class RpaCompositor {
             }
             // 3. Stylish
             else if (tin === 'glitch-scan' || tin === 'glitch') {
-                result.x = (Math.random() - 0.5) * 50 * (1 - t);
+                if (clip.type !== 'callout') {
+                    result.x = (Math.random() - 0.5) * 50 * (1 - t);
+                }
             } else if (tin === 'film-roll') {
                 result.y = ((1 - t) * 3 % 1.0) * canvasHeight * 0.5;
             }
@@ -2068,7 +2081,9 @@ class RpaCompositor {
             }
             // 3. Stylish
             else if (tout === 'glitch-scan' || tout === 'glitch') {
-                result.x += (Math.random() - 0.5) * 50 * (1 - t);
+                if (clip.type !== 'callout') {
+                    result.x += (Math.random() - 0.5) * 50 * (1 - t);
+                }
             } else if (tout === 'film-roll') {
                 result.y -= ((1 - t) * 3 % 1.0) * canvasHeight * 0.5;
             }
@@ -2135,7 +2150,9 @@ class RpaCompositor {
                     } else if (it.type === 'whip-right' || it.type === 'slide-right') {
                         result.x -= Math.sin(p * Math.PI) * canvasWidth * 0.35;
                     } else if (it.type === 'glitch' || it.type === 'glitch-scan') {
-                        result.x += (Math.random() - 0.5) * 35 * peak;
+                        if (clip.type !== 'callout') {
+                            result.x += (Math.random() - 0.5) * 35 * peak;
+                        }
                     } else if (it.type === 'vortex-roll' || it.type === 'spin-cw') {
                         result.rotation += p * 360;
                     }
@@ -2147,6 +2164,7 @@ class RpaCompositor {
     }
 
     applyTransitionClipping(clip, relTime, duration, drawX, drawY, drawW, drawH) {
+        if (!clip || clip.type === 'callout') return;
         const tin = clip.transitionIn || 'none';
         const tout = clip.transitionOut || 'none';
         const durIn = clip.transitionInDuration || 0.8;
@@ -2496,34 +2514,92 @@ class RpaCompositor {
         }
     }
 
-    applyChromaKey(x, y, w, h, targetHex, tolerance) {
+    /**
+     * Hardware-Accelerated Chroma Keying Engine (Green / Blue Screen Removal)
+     * Performs clean color distance sampling, green/blue dominance edge extraction,
+     * smooth feathering, and edge color spill suppression onto a reusable offscreen canvas.
+     * When drawn onto this.ctx, lower timeline tracks are natively preserved and revealed!
+     */
+    renderChromaKeyed(source, sx, sy, sw, sh, dx, dy, dw, dh, targetHex = '#00ff00', tolerance = 0.28) {
         try {
-            const cx = Math.max(0, Math.floor(x));
-            const cy = Math.max(0, Math.floor(y));
-            const cw = Math.min(Math.ceil(w), this.canvas.width - cx);
-            const ch = Math.min(Math.ceil(h), this.canvas.height - cy);
-            if (cw <= 0 || ch <= 0) return;
+            if (!this.chromaCanvas) {
+                this.chromaCanvas = document.createElement('canvas');
+                this.chromaCtx = this.chromaCanvas.getContext('2d', { willReadFrequently: true });
+            }
 
-            const imgData = this.ctx.getImageData(cx, cy, cw, ch);
+            // Downsample high-res video frames proportionally if dw/dh are smaller to maximize performance and smoothness
+            const procW = Math.max(1, Math.min(1920, Math.ceil(dw)));
+            const procH = Math.max(1, Math.min(1080, Math.ceil(dh)));
+
+            if (this.chromaCanvas.width !== procW || this.chromaCanvas.height !== procH) {
+                this.chromaCanvas.width = procW;
+                this.chromaCanvas.height = procH;
+            }
+
+            this.chromaCtx.clearRect(0, 0, procW, procH);
+            this.chromaCtx.drawImage(source, sx, sy, sw, sh, 0, 0, procW, procH);
+
+            const imgData = this.chromaCtx.getImageData(0, 0, procW, procH);
             const data = imgData.data;
+
             const rTarget = parseInt(targetHex.slice(1, 3), 16) || 0;
             const gTarget = parseInt(targetHex.slice(3, 5), 16) || 255;
             const bTarget = parseInt(targetHex.slice(5, 7), 16) || 0;
-            const tol = tolerance * 255;
-            const tolSq = tol * tol;
+
+            const tol = Math.max(0.02, tolerance) * 255;
+            const innerTol = tol * 0.72; // Inner boundary: 100% transparent
+            const outerTol = tol * 1.08; // Outer boundary: feather transition
+            const innerTolSq = innerTol * innerTol;
+            const outerTolSq = outerTol * outerTol;
+
+            const isGreenTarget = (gTarget > rTarget + 25 && gTarget > bTarget + 25);
+            const isBlueTarget = (bTarget > rTarget + 25 && bTarget > gTarget + 25);
 
             for (let i = 0; i < data.length; i += 4) {
-                const dr = data[i] - rTarget;
-                const dg = data[i + 1] - gTarget;
-                const db = data[i + 2] - bTarget;
-                if ((dr * dr + dg * dg + db * db) < tolSq) {
-                    data[i + 3] = 0;
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                const dr = r - rTarget;
+                const dg = g - gTarget;
+                const db = b - bTarget;
+                const distSq = dr * dr + dg * dg + db * db;
+
+                // Color Dominance Check for crisp green/blue screen borders
+                let isDominant = false;
+                if (isGreenTarget && g > r * 1.15 && g > b * 1.15 && (g - Math.max(r, b)) > 20) {
+                    isDominant = true;
+                } else if (isBlueTarget && b > r * 1.15 && b > g * 1.15 && (b - Math.max(r, g)) > 20) {
+                    isDominant = true;
+                }
+
+                if (distSq <= innerTolSq || (isDominant && distSq <= outerTolSq)) {
+                    data[i + 3] = 0; // Fully Transparent
+                } else if (distSq < outerTolSq) {
+                    // Smooth edge feathering
+                    const dist = Math.sqrt(distSq);
+                    const feather = (dist - innerTol) / (outerTol - innerTol);
+                    data[i + 3] = Math.round(data[i + 3] * Math.max(0, Math.min(1, feather)));
+
+                    // Spill suppression on keyed edges
+                    if (isGreenTarget && g > Math.max(r, b)) {
+                        data[i + 1] = Math.round((r + b) / 2);
+                    } else if (isBlueTarget && b > Math.max(r, g)) {
+                        data[i + 2] = Math.round((r + g) / 2);
+                    }
                 }
             }
-            this.ctx.putImageData(imgData, cx, cy);
+
+            this.chromaCtx.putImageData(imgData, 0, 0);
+            this.ctx.drawImage(this.chromaCanvas, 0, 0, procW, procH, dx, dy, dw, dh);
         } catch {
-            // Offscreen policy safe
+            // Fallback to direct draw in case of any offscreen context restriction
+            this.ctx.drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh);
         }
+    }
+
+    applyChromaKey(x, y, w, h, targetHex, tolerance) {
+        // Retained for backward compatibility
     }
 
     renderMacFrame(x, y, w, h) {
@@ -2708,26 +2784,48 @@ class RpaCompositor {
 
         const easedProgress = progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress;
 
-        // A. Shutter Strobe Transition (Font Flicker at 30 Hz)
-        if (activeTrans === 'shutter-strobe' || activeTrans === 'strobe' || activeTrans === 'shutter') {
+        // A. Shutter Strobe / Stutter Glitch Transition (Font Flicker at 30 Hz)
+        if (activeTrans.includes('strobe') || activeTrans.includes('shutter') || activeTrans.includes('stutter')) {
             const frameNum = Math.floor(relTime * 30);
             const isOn = (frameNum % 2) === 0;
+            const intensity = (phase === 'intermediate') ? Math.sin(progress * Math.PI) : (1 - progress);
             return {
                 active: true,
                 type: 'shutter-strobe',
                 phase,
                 progress,
                 strobeVisible: isOn,
-                textAlpha: isOn ? 1.0 : 0.0,
-                flashAlpha: isOn ? (phase === 'intermediate' ? Math.sin(progress * Math.PI) * 0.9 : 0.75) : 0,
+                textAlpha: isOn ? 1.0 : 0.05,
+                flashAlpha: isOn ? Math.max(0.35, intensity * 0.9) : 0,
                 scale: isOn ? 1.04 : 0.96,
-                offsetX: isOn ? (Math.random() - 0.5) * 3 : 0,
-                offsetY: isOn ? (Math.random() - 0.5) * 3 : 0,
-                rgbSplit: isOn ? 5 : 0
+                offsetX: isOn ? (Math.random() - 0.5) * 4 : 0,
+                offsetY: isOn ? (Math.random() - 0.5) * 4 : 0,
+                rgbSplit: isOn ? Math.round(6 * intensity) : 0
             };
         }
 
-        // B. White Flash / Dip to White
+        // B. RGB Split / Chromatic Channel Divergence (Text Typography Only)
+        if (activeTrans === 'chromatic-split' || activeTrans === 'rgb-split' || activeTrans.includes('chromatic') || activeTrans.includes('split')) {
+            const intensity = (phase === 'intermediate')
+                ? Math.sin(progress * Math.PI)
+                : (phase === 'in' ? (1 - progress) : (1 - progress));
+            const splitAmount = Math.max(4, Math.sin(progress * Math.PI) * 18 * intensity + 6 * intensity);
+            return {
+                active: true,
+                type: 'chromatic-split',
+                phase,
+                progress,
+                strobeVisible: true,
+                textAlpha: 1.0,
+                flashAlpha: 0,
+                scale: 1.0,
+                offsetX: (Math.random() - 0.5) * 6 * intensity,
+                offsetY: 0,
+                rgbSplit: splitAmount
+            };
+        }
+
+        // C. White Flash / Dip to White
         if (activeTrans === 'white-flash' || activeTrans === 'dip-white' || activeTrans === 'flash') {
             const flashPeak = (phase === 'intermediate')
                 ? Math.sin(progress * Math.PI)
@@ -2747,8 +2845,8 @@ class RpaCompositor {
             };
         }
 
-        // C. Glitch / Cyber Jitter
-        if (activeTrans.includes('glitch')) {
+        // D. Glitch Scanlines & Cyber Jitter (Text Typography Only)
+        if (activeTrans.includes('glitch') || activeTrans.includes('scan')) {
             const intensity = (phase === 'intermediate')
                 ? Math.sin(progress * Math.PI)
                 : (1 - progress);
@@ -2759,11 +2857,12 @@ class RpaCompositor {
                 progress,
                 strobeVisible: true,
                 textAlpha: 0.8 + Math.random() * 0.2,
-                flashAlpha: Math.random() > 0.8 ? 0.4 : 0,
+                flashAlpha: Math.random() > 0.75 ? 0.4 : 0,
                 scale: 1.0 + (Math.random() - 0.5) * 0.08 * intensity,
                 offsetX: (Math.random() - 0.5) * 16 * intensity,
                 offsetY: (Math.random() - 0.5) * 6 * intensity,
-                rgbSplit: 8 * intensity
+                rgbSplit: 10 * intensity,
+                scanlineJitter: true
             };
         }
 
@@ -2905,7 +3004,28 @@ class RpaCompositor {
             ctx.restore();
         }
 
-        // Layer 0.5: Chromatic RGB Aberration (Glitch / Strobe)
+        // Layer 0.4: Typography-Isolated Scanline Jitter (Glitch Scanlines)
+        if (fontTrans && fontTrans.scanlineJitter) {
+            ctx.save();
+            const fSizeApprox = Math.max(12, Math.round((clip.fontSize || 38) * bScale));
+            const sliceCount = 5;
+            const sliceH = Math.max(2, Math.round(fSizeApprox / sliceCount));
+            for (let s = 0; s < sliceCount; s++) {
+                if ((s % 2) === 1) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(-1000, -fSizeApprox + s * sliceH, 2000, sliceH);
+                    ctx.clip();
+                    const jitterOffset = (Math.sin(relTime * 45 + s * 4.2) * 6 + (Math.random() - 0.5) * 4) * bScale;
+                    ctx.fillStyle = 'rgba(0, 242, 254, 0.7)';
+                    ctx.fillText(textToDraw, targetX + jitterOffset, targetY);
+                    ctx.restore();
+                }
+            }
+            ctx.restore();
+        }
+
+        // Layer 0.5: Chromatic RGB Aberration (Glitch / Strobe / RGB Split)
         if (fontTrans && fontTrans.rgbSplit && fontTrans.rgbSplit > 0) {
             ctx.save();
             ctx.fillStyle = 'rgba(0, 242, 254, 0.75)';
@@ -3963,25 +4083,84 @@ class RpaCompositor {
     }
 
     /**
+     * Compute Smooth Motion Tracking target coordinates from the underlying media clip
+     * Tracks keyframes, dynamic behaviors, and screen recording telemetry from media clips
+     */
+    getTrackedMediaMotion(clip, relTime, width, height) {
+        if (!this.lastTimeline || !this.lastTimeline.clips) return null;
+        const absTime = (clip.startTime || 0) + relTime;
+
+        // Find active video or image media clip under the magnify lens at current playhead
+        const mediaClips = this.lastTimeline.clips.filter(c =>
+            (c.type === 'video' || c.type === 'image') &&
+            absTime >= c.startTime && absTime <= (c.startTime + c.duration)
+        ).sort((a, b) => b.trackId - a.trackId);
+
+        const targetMedia = mediaClips[0];
+        if (!targetMedia) return null;
+
+        const mediaRel = absTime - targetMedia.startTime;
+        const mediaProg = Math.max(0, Math.min(1, mediaRel / targetMedia.duration));
+        const mediaKf = this.computeKeyframes(targetMedia, mediaRel);
+        const mediaBeh = this.computeBehavior(targetMedia.behavior, mediaProg, mediaRel, targetMedia.duration, targetMedia);
+
+        // Media center coordinates
+        let mediaCenterX = width * 0.5 + (targetMedia.xOffset || 0) + (mediaKf.x || 0) + (mediaBeh.x || 0);
+        let mediaCenterY = height * 0.5 + (targetMedia.yOffset || 0) + (mediaKf.y || 0) + (mediaBeh.y || 0);
+
+        // If media clip has recorded cursor or motion telemetry points
+        if (targetMedia.telemetry && targetMedia.telemetry.length > 0) {
+            const tele = this.interpolateTelemetry(targetMedia.telemetry, mediaRel);
+            if (tele && tele.x !== undefined && tele.y !== undefined) {
+                mediaCenterX = tele.x * width + (mediaKf.x || 0) + (mediaBeh.x || 0);
+                mediaCenterY = tele.y * height + (mediaKf.y || 0) + (mediaBeh.y || 0);
+            }
+        }
+
+        // Apply clip user focal offset or position offset relative to tracked center
+        const targetX = mediaCenterX + (clip.xOffset || 0);
+        const targetY = mediaCenterY + (clip.yOffset || 0);
+
+        // Apply smoothing / inertia filter
+        const smooth = Math.max(0, Math.min(1, (clip.trackingSmooth !== undefined ? clip.trackingSmooth : 0.5)));
+        if (clip._lastTrackedX === undefined || isNaN(clip._lastTrackedX)) {
+            clip._lastTrackedX = targetX;
+            clip._lastTrackedY = targetY;
+        } else {
+            const factor = Math.max(0.08, 1.0 - smooth * 0.88);
+            clip._lastTrackedX += (targetX - clip._lastTrackedX) * factor;
+            clip._lastTrackedY += (targetY - clip._lastTrackedY) * factor;
+        }
+
+        return { x: clip._lastTrackedX, y: clip._lastTrackedY };
+    }
+
+    /**
      * Render Studio Zoom / Magnify / Highlight Lens
      */
     renderMagnifyLens(clip, drawX, drawY, drawW, drawH, width, height, isDefaultFull, relTime, duration) {
         let cx = isDefaultFull ? width * 0.5 : (drawX + drawW / 2);
         let cy = isDefaultFull ? height * 0.5 : (drawY + drawH / 2);
-        const lw = isDefaultFull ? 360 : drawW;
-        const lh = isDefaultFull ? 360 : drawH;
+        const lw = (clip.width !== undefined && clip.width > 0) ? clip.width : (isDefaultFull ? 360 : drawW);
+        const lh = (clip.height !== undefined && clip.height > 0) ? clip.height : (isDefaultFull ? 360 : drawH);
 
-        // Motion Tracking: Cursor Telemetry Follow
+        // Motion Tracking: Cursor Telemetry or Media Motion Target Follow
         if (clip.trackingMode === 'cursor' && clip.startTime !== undefined) {
             const curPoint = this.getInterpolatedCursor(clip.startTime + relTime);
             if (curPoint && curPoint.x !== undefined && curPoint.y !== undefined) {
-                cx = curPoint.x * width;
-                cy = curPoint.y * height;
+                cx = curPoint.x * width + (clip.xOffset || 0);
+                cy = curPoint.y * height + (clip.yOffset || 0);
+            }
+        } else if (clip.trackingMode === 'motion') {
+            const trackedPos = this.getTrackedMediaMotion(clip, relTime, width, height);
+            if (trackedPos) {
+                cx = trackedPos.x;
+                cy = trackedPos.y;
             }
         }
 
         const shape = clip.shape || 'circle';
-        const mag = Math.max(1.0, Math.min(5.0, clip.magnification !== undefined ? clip.magnification : 2.0));
+        const mag = Math.max(1.0, Math.min(10.0, clip.magnification !== undefined ? clip.magnification : 2.0));
         const focalX = cx + (clip.focalOffsetX || 0);
         const focalY = cy + (clip.focalOffsetY || 0);
 

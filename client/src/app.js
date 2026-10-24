@@ -2419,67 +2419,192 @@ class RpaStudioApp {
             }
         });
 
-        // 1. Zoom Level
+        // 1. Zoom Level & Presets
+        const setMagZoom = (val) => {
+            const clip = getClip();
+            if (clip) {
+                clip.magnification = Math.max(1.0, Math.min(10.0, parseFloat(val) || 2.0));
+                const propL = document.getElementById('propMagLevel');
+                if (propL) propL.value = Math.min(8.0, clip.magnification);
+                const numL = document.getElementById('numMagLevel');
+                if (numL) numL.value = clip.magnification.toFixed(2);
+                const lblL = document.getElementById('lblMagLevel');
+                if (lblL) lblL.innerText = `${clip.magnification.toFixed(1)}x`;
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            }
+        };
+
         const propMagLevel = document.getElementById('propMagLevel');
         if (propMagLevel) {
-            propMagLevel.oninput = (e) => {
-                const clip = getClip();
-                if (clip) {
-                    clip.magnification = parseFloat(e.target.value);
-                    const lbl = document.getElementById('lblMagLevel');
-                    if (lbl) lbl.innerText = `${clip.magnification.toFixed(1)}x`;
-                    this.compositor.renderFrame(this.timeline, this.playheadTime);
-                }
-            };
+            propMagLevel.oninput = (e) => setMagZoom(e.target.value);
             propMagLevel.onchange = () => this.timeline.saveSnapshot();
         }
+        const numMagLevel = document.getElementById('numMagLevel');
+        if (numMagLevel) {
+            numMagLevel.oninput = (e) => setMagZoom(e.target.value);
+            numMagLevel.onchange = () => this.timeline.saveSnapshot();
+        }
+        document.querySelectorAll('.btn-mag-zoom-preset').forEach(btn => {
+            btn.onclick = () => {
+                setMagZoom(btn.dataset.zoom);
+                this.timeline.saveSnapshot();
+            };
+        });
 
-        // 2. Focal Offsets
+        // 1b. Lens Dimensions (Width & Height) + 1:1 Aspect Ratio Lock
+        let magAspectLocked = true;
+        const btnMagLock = document.getElementById('btnMagLockAspect');
+        if (btnMagLock) {
+            btnMagLock.onclick = () => {
+                magAspectLocked = !magAspectLocked;
+                btnMagLock.innerText = magAspectLocked ? '🔗 Lock 1:1' : '🔓 Free Aspect';
+                btnMagLock.style.color = magAspectLocked ? '#38bdf8' : 'var(--text-muted)';
+            };
+        }
+
+        const setMagSize = (w, h) => {
+            const clip = getClip();
+            if (clip) {
+                if (w !== undefined) clip.width = Math.max(60, Math.min(1920, parseInt(w, 10) || 360));
+                if (h !== undefined) clip.height = Math.max(60, Math.min(1080, parseInt(h, 10) || 360));
+                if (magAspectLocked) {
+                    if (w !== undefined && h === undefined) clip.height = clip.width;
+                    else if (h !== undefined && w === undefined) clip.width = clip.height;
+                }
+                const propW = document.getElementById('propMagWidth');
+                if (propW) propW.value = Math.min(1200, clip.width);
+                const numW = document.getElementById('numMagWidth');
+                if (numW) numW.value = clip.width;
+                const lblW = document.getElementById('lblMagWidth');
+                if (lblW) lblW.innerText = `${clip.width}px`;
+
+                const propH = document.getElementById('propMagHeight');
+                if (propH) propH.value = Math.min(1080, clip.height);
+                const numH = document.getElementById('numMagHeight');
+                if (numH) numH.value = clip.height;
+                const lblH = document.getElementById('lblMagHeight');
+                if (lblH) lblH.innerText = `${clip.height}px`;
+
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            }
+        };
+
+        const propMagWidth = document.getElementById('propMagWidth');
+        if (propMagWidth) {
+            propMagWidth.oninput = (e) => setMagSize(e.target.value, undefined);
+            propMagWidth.onchange = () => this.timeline.saveSnapshot();
+        }
+        const numMagWidth = document.getElementById('numMagWidth');
+        if (numMagWidth) {
+            numMagWidth.oninput = (e) => setMagSize(e.target.value, undefined);
+            numMagWidth.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        const propMagHeight = document.getElementById('propMagHeight');
+        if (propMagHeight) {
+            propMagHeight.oninput = (e) => setMagSize(undefined, e.target.value);
+            propMagHeight.onchange = () => this.timeline.saveSnapshot();
+        }
+        const numMagHeight = document.getElementById('numMagHeight');
+        if (numMagHeight) {
+            numMagHeight.oninput = (e) => setMagSize(undefined, e.target.value);
+            numMagHeight.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        document.querySelectorAll('.btn-mag-size-preset').forEach(btn => {
+            btn.onclick = () => {
+                setMagSize(btn.dataset.w, btn.dataset.h);
+                this.timeline.saveSnapshot();
+            };
+        });
+
+        // 1c. Manual Canvas Placement (Position X & Y)
+        const setMagPos = (px, py) => {
+            const clip = getClip();
+            if (clip) {
+                if (px !== undefined) clip.xOffset = parseInt(px, 10) || 0;
+                if (py !== undefined) clip.yOffset = parseInt(py, 10) || 0;
+                const numX = document.getElementById('numMagPosX');
+                if (numX) numX.value = clip.xOffset || 0;
+                const lblX = document.getElementById('lblMagPosX');
+                if (lblX) lblX.innerText = `${clip.xOffset || 0}px`;
+
+                const numY = document.getElementById('numMagPosY');
+                if (numY) numY.value = clip.yOffset || 0;
+                const lblY = document.getElementById('lblMagPosY');
+                if (lblY) lblY.innerText = `${clip.yOffset || 0}px`;
+
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            }
+        };
+
+        const numMagPosX = document.getElementById('numMagPosX');
+        if (numMagPosX) {
+            numMagPosX.oninput = (e) => setMagPos(e.target.value, undefined);
+            numMagPosX.onchange = () => this.timeline.saveSnapshot();
+        }
+        const numMagPosY = document.getElementById('numMagPosY');
+        if (numMagPosY) {
+            numMagPosY.oninput = (e) => setMagPos(undefined, e.target.value);
+            numMagPosY.onchange = () => this.timeline.saveSnapshot();
+        }
+
+        document.querySelectorAll('.btn-mag-pos-preset').forEach(btn => {
+            btn.onclick = () => {
+                setMagPos(btn.dataset.px, btn.dataset.py);
+                this.timeline.saveSnapshot();
+            };
+        });
+
+        // 2. Focal Offsets (Manual Numeric + Range Sliders)
+        const setMagFocal = (fx, fy) => {
+            const clip = getClip();
+            if (clip) {
+                if (fx !== undefined) clip.focalOffsetX = parseInt(fx, 10) || 0;
+                if (fy !== undefined) clip.focalOffsetY = parseInt(fy, 10) || 0;
+
+                const propX = document.getElementById('propMagFocalX');
+                if (propX) propX.value = clip.focalOffsetX || 0;
+                const numX = document.getElementById('numMagFocalX');
+                if (numX) numX.value = clip.focalOffsetX || 0;
+
+                const propY = document.getElementById('propMagFocalY');
+                if (propY) propY.value = clip.focalOffsetY || 0;
+                const numY = document.getElementById('numMagFocalY');
+                if (numY) numY.value = clip.focalOffsetY || 0;
+
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            }
+        };
+
         const propMagFocalX = document.getElementById('propMagFocalX');
         if (propMagFocalX) {
-            propMagFocalX.oninput = (e) => {
-                const clip = getClip();
-                if (clip) {
-                    clip.focalOffsetX = parseInt(e.target.value, 10);
-                    const lbl = document.getElementById('lblMagFocalX');
-                    if (lbl) lbl.innerText = `${clip.focalOffsetX}px`;
-                    this.compositor.renderFrame(this.timeline, this.playheadTime);
-                }
-            };
+            propMagFocalX.oninput = (e) => setMagFocal(e.target.value, undefined);
             propMagFocalX.onchange = () => this.timeline.saveSnapshot();
+        }
+        const numMagFocalX = document.getElementById('numMagFocalX');
+        if (numMagFocalX) {
+            numMagFocalX.oninput = (e) => setMagFocal(e.target.value, undefined);
+            numMagFocalX.onchange = () => this.timeline.saveSnapshot();
         }
 
         const propMagFocalY = document.getElementById('propMagFocalY');
         if (propMagFocalY) {
-            propMagFocalY.oninput = (e) => {
-                const clip = getClip();
-                if (clip) {
-                    clip.focalOffsetY = parseInt(e.target.value, 10);
-                    const lbl = document.getElementById('lblMagFocalY');
-                    if (lbl) lbl.innerText = `${clip.focalOffsetY}px`;
-                    this.compositor.renderFrame(this.timeline, this.playheadTime);
-                }
-            };
+            propMagFocalY.oninput = (e) => setMagFocal(undefined, e.target.value);
             propMagFocalY.onchange = () => this.timeline.saveSnapshot();
+        }
+        const numMagFocalY = document.getElementById('numMagFocalY');
+        if (numMagFocalY) {
+            numMagFocalY.oninput = (e) => setMagFocal(undefined, e.target.value);
+            numMagFocalY.onchange = () => this.timeline.saveSnapshot();
         }
 
         // 3. Focal Center & Glass Curvature
         const btnCenterFocus = document.getElementById('btnCenterFocalPoint');
         if (btnCenterFocus) {
             btnCenterFocus.onclick = () => {
-                const clip = getClip();
-                if (clip) {
-                    clip.focalOffsetX = 0;
-                    clip.focalOffsetY = 0;
-                    if (propMagFocalX) propMagFocalX.value = 0;
-                    if (propMagFocalY) propMagFocalY.value = 0;
-                    const lX = document.getElementById('lblMagFocalX');
-                    if (lX) lX.innerText = '0px';
-                    const lY = document.getElementById('lblMagFocalY');
-                    if (lY) lY.innerText = '0px';
-                    this.timeline.saveSnapshot();
-                    this.compositor.renderFrame(this.timeline, this.playheadTime);
-                }
+                setMagFocal(0, 0);
+                this.timeline.saveSnapshot();
             };
         }
 
@@ -2631,6 +2756,8 @@ class RpaStudioApp {
                 const clip = getClip();
                 if (clip) {
                     clip.trackingMode = e.target.value;
+                    const groupSm = document.getElementById('groupMagTrackingSmooth');
+                    if (groupSm) groupSm.style.display = (clip.trackingMode === 'fixed') ? 'none' : 'block';
                     this.timeline.saveSnapshot();
                     this.compositor.renderFrame(this.timeline, this.playheadTime);
                 }
@@ -2658,6 +2785,10 @@ class RpaStudioApp {
                 const clip = getClip();
                 if (clip) {
                     clip.magnification = 2.0;
+                    clip.width = 360;
+                    clip.height = 360;
+                    clip.xOffset = 0;
+                    clip.yOffset = 0;
                     clip.shape = 'circle';
                     clip.borderColor = '#00f0ff';
                     clip.color = '#00f0ff';
@@ -4970,17 +5101,51 @@ class RpaStudioApp {
             const trkSm = Math.round((selectedClip.trackingSmooth !== undefined ? selectedClip.trackingSmooth : 0.5) * 100);
 
             const propMagLevel = document.getElementById('propMagLevel');
-            if (propMagLevel) propMagLevel.value = mag;
+            if (propMagLevel) propMagLevel.value = Math.min(8.0, mag);
+            const numMagLevel = document.getElementById('numMagLevel');
+            if (numMagLevel) numMagLevel.value = mag.toFixed(2);
             const lblMagLevel = document.getElementById('lblMagLevel');
             if (lblMagLevel) lblMagLevel.innerText = `${mag.toFixed(1)}x`;
 
+            const wVal = selectedClip.width || 360;
+            const hVal = selectedClip.height || 360;
+            const propMagWidth = document.getElementById('propMagWidth');
+            if (propMagWidth) propMagWidth.value = Math.min(1200, wVal);
+            const numMagWidth = document.getElementById('numMagWidth');
+            if (numMagWidth) numMagWidth.value = wVal;
+            const lblMagWidth = document.getElementById('lblMagWidth');
+            if (lblMagWidth) lblMagWidth.innerText = `${wVal}px`;
+
+            const propMagHeight = document.getElementById('propMagHeight');
+            if (propMagHeight) propMagHeight.value = Math.min(1080, hVal);
+            const numMagHeight = document.getElementById('numMagHeight');
+            if (numMagHeight) numMagHeight.value = hVal;
+            const lblMagHeight = document.getElementById('lblMagHeight');
+            if (lblMagHeight) lblMagHeight.innerText = `${hVal}px`;
+
+            const xOff = selectedClip.xOffset || 0;
+            const yOff = selectedClip.yOffset || 0;
+            const numMagPosX = document.getElementById('numMagPosX');
+            if (numMagPosX) numMagPosX.value = xOff;
+            const lblMagPosX = document.getElementById('lblMagPosX');
+            if (lblMagPosX) lblMagPosX.innerText = `${xOff}px`;
+
+            const numMagPosY = document.getElementById('numMagPosY');
+            if (numMagPosY) numMagPosY.value = yOff;
+            const lblMagPosY = document.getElementById('lblMagPosY');
+            if (lblMagPosY) lblMagPosY.innerText = `${yOff}px`;
+
             const propMagFocalX = document.getElementById('propMagFocalX');
             if (propMagFocalX) propMagFocalX.value = fx;
+            const numMagFocalX = document.getElementById('numMagFocalX');
+            if (numMagFocalX) numMagFocalX.value = fx;
             const lblMagFocalX = document.getElementById('lblMagFocalX');
             if (lblMagFocalX) lblMagFocalX.innerText = `${fx}px`;
 
             const propMagFocalY = document.getElementById('propMagFocalY');
             if (propMagFocalY) propMagFocalY.value = fy;
+            const numMagFocalY = document.getElementById('numMagFocalY');
+            if (numMagFocalY) numMagFocalY.value = fy;
             const lblMagFocalY = document.getElementById('lblMagFocalY');
             if (lblMagFocalY) lblMagFocalY.innerText = `${fy}px`;
 
@@ -5020,6 +5185,8 @@ class RpaStudioApp {
 
             const propMagTrackingMode = document.getElementById('propMagTrackingMode');
             if (propMagTrackingMode) propMagTrackingMode.value = trkMode;
+            const groupSm = document.getElementById('groupMagTrackingSmooth');
+            if (groupSm) groupSm.style.display = (trkMode === 'fixed') ? 'none' : 'block';
 
             const propMagTrackingSmooth = document.getElementById('propMagTrackingSmooth');
             if (propMagTrackingSmooth) propMagTrackingSmooth.value = trkSm;
