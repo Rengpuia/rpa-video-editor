@@ -236,18 +236,40 @@ const server = http.createServer((req, res) => {
     }
 });
 
-server.listen(PORT, HOST, () => {
-    const appUrl = `http://${HOST}:${PORT}`;
-    console.log(`\n======================================================`);
-    console.log(`  🎬 RPA VIDEO EDITOR - STUDIO MEDIA SERVER ONLINE    `);
-    console.log(`======================================================`);
-    console.log(`  Studio URL:    ${appUrl}`);
-    console.log(`  Projects Path: ${PROJECTS_DIR}`);
-    console.log(`  Exports Path:  ${EXPORTS_DIR}`);
-    console.log(`======================================================\n`);
+function start(port = PORT, host = HOST) {
+    return new Promise((resolve, reject) => {
+        server.listen(port, host, () => {
+            const appUrl = `http://${host}:${port}`;
+            console.log(`\n======================================================`);
+            console.log(`  🎬 RPA VIDEO EDITOR - STUDIO MEDIA SERVER ONLINE    `);
+            console.log(`======================================================`);
+            console.log(`  Studio URL:    ${appUrl}`);
+            console.log(`  Projects Path: ${PROJECTS_DIR}`);
+            console.log(`  Exports Path:  ${EXPORTS_DIR}`);
+            console.log(`======================================================\n`);
 
-    // Automatically open in default browser on launch
-    const openCommand = process.platform === 'win32' ? `start "" "${appUrl}"` :
-                        process.platform === 'darwin' ? `open "${appUrl}"` : `xdg-open "${appUrl}"`;
-    exec(openCommand, () => {});
-});
+            // Only open external browser if explicitly requested (never in offline desktop mode)
+            if (process.env.OPEN_BROWSER === 'true' && !process.env.OFFLINE_DESKTOP && !process.versions?.electron) {
+                const openCommand = process.platform === 'win32' ? `start "" "${appUrl}"` :
+                                    process.platform === 'darwin' ? `open "${appUrl}"` : `xdg-open "${appUrl}"`;
+                exec(openCommand, () => {});
+            }
+            resolve(server);
+        });
+
+        server.on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                console.log(`[RPA Server] Port ${port} is already in use. Utilizing existing instance.`);
+                resolve(server);
+            } else {
+                reject(err);
+            }
+        });
+    });
+}
+
+if (require.main === module) {
+    start();
+}
+
+module.exports = { server, start, PORT, HOST };

@@ -1,17 +1,62 @@
 {
   "name": "rpa-video-editor",
   "version": "2.0.0",
-  "description": "RPA Video Editor - Cleanroom Open-Source Screen Recording & Studio Video Editing Suite with MCP Support",
-  "main": "server/server.js",
+  "description": "RPA Video Editor - Cleanroom Open-Source Studio Video Editing Suite",
+  "main": "main.js",
   "bin": {
     "rpa-mcp": "./mcp_server.js"
   },
   "scripts": {
-    "start": "node server/server.js",
-    "dev": "node server/server.js",
+    "start": "electron .",
+    "desktop": "electron .",
+    "start:server": "node server/server.js",
     "mcp": "node mcp_server.js",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable",
+    "dist:dir": "electron-builder --win dir",
+    "build:native": "powershell -ExecutionPolicy Bypass -File ./build_native_desktop.ps1",
     "build:installer": "powershell -ExecutionPolicy Bypass -File ./build_installer.ps1",
-    "test": "node --check client/src/app.js && node --check client/src/compositor.js && node --check client/src/timeline.js && node --check client/src/recorder.js && node --check server/server.js && node --check server/mcp_handler.js && node --check mcp_server.js"
+    "test": "node --check client/src/app.js && node --check client/src/compositor.js && node --check client/src/timeline.js && node --check client/src/recorder.js && node --check server/server.js && node --check server/mcp_handler.js && node --check mcp_server.js && node --check main.js && node --check preload.js"
+  },
+  "build": {
+    "appId": "com.rpa.videoeditor",
+    "productName": "RPA Video Editor",
+    "copyright": "Copyright © 2026 K Vanlalrengpuia",
+    "directories": {
+      "output": "exports"
+    },
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "client/favicon.ico",
+      "artifactName": "RPA-Video-Editor-${version}-${target}.${ext}",
+      "legalTrademarks": "Open Source (MIT License)"
+    },
+    "portable": {
+      "artifactName": "RPA-Video-Editor-v${version}-Portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RPA Video Editor Pro",
+      "artifactName": "RPA-Video-Editor-v${version}-Setup.exe"
+    },
+    "files": [
+      "client/**/*",
+      "server/**/*",
+      "main.js",
+      "preload.js",
+      "mcp_server.js",
+      "package.json"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
   },
   "keywords": [
     "video-editor",
@@ -21,7 +66,9 @@
     "timeline",
     "studio",
     "mcp",
-    "model-context-protocol"
+    "model-context-protocol",
+    "electron",
+    "desktop-app"
   ],
   "author": "K Vanlalrengpuia <rengakhiangte@gmail.com>",
   "license": "MIT",

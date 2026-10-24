@@ -1,14 +1,12 @@
-<#
-.SYNOPSIS
-    RPA Video Editor - Studio Launcher
-#>
+# RPA Video Editor - Studio Desktop Launcher
+$rootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $rootDir
 
-Set-Location -Path $PSScriptRoot
-Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "          STARTING RPA VIDEO EDITOR STUDIO            " -ForegroundColor Yellow
-Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Launching local media server on http://127.0.0.1:3800..." -ForegroundColor Green
-Start-Process "http://localhost:3800"
+$exePath = Join-Path $rootDir "RPA_Video_Editor.exe"
+if (Test-Path $exePath) {
+    Start-Process -FilePath $exePath
+    exit 0
+}
 
-& node "server\server.js"
+Write-Host "Starting RPA Video Editor Studio..." -ForegroundColor Cyan
+& node (Join-Path $rootDir "server\server.js")

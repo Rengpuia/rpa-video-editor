@@ -1,4 +1,4 @@
-name: Build Windows Installer & Release
+name: Build Windows Desktop App & Release
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    name: Build RPA Video Editor Windows Setup
+    name: Build RPA Video Editor Windows Desktop Suite
     runs-on: windows-latest
 
     steps:
@@ -25,51 +25,84 @@ jobs:
         with:
           node-version: 20
 
-      - name: Validate Code & Check Cleanroom
+      - name: Validate Code & Run Test Suite
         run: |
-          node --check client/src/app.js
-          node --check client/src/compositor.js
-          node --check client/src/timeline.js
-          node --check client/src/recorder.js
-          node --check server/server.js
-          node --check server/mcp_handler.js
-          node --check mcp_server.js
+          npm test
+
+      - name: Compile Native Desktop Launcher (.exe)
+        run: |
+          powershell -ExecutionPolicy Bypass -File ./build_native_desktop.ps1
+
+      - name: Package Portable ZIP Distribution
+        run: |
+          powershell -ExecutionPolicy Bypass -Command @"
+          `$exportsDir = 'exports'
+          if (-not (Test-Path `$exportsDir)) { New-Item -ItemType Directory -Path `$exportsDir | Out-Null }
+          `$zipPath = Join-Path `$exportsDir 'RPA_Video_Editor_v2.0.0_Portable.zip'
+          `$items = @('client', 'server', 'RPA_Video_Editor.exe', 'main.js', 'preload.js', 'mcp_server.js', 'package.json', 'LICENSE', 'README.md', 'unblock_app.bat', 'unblock_app.ps1', 'start_rpa_video_editor.bat', 'start_rpa_video_editor.ps1')
+          Compress-Archive -Path `$items -DestinationPath `$zipPath -Force
+          "@
 
       - name: Install Inno Setup Compiler
         run: |
           choco install innosetup -y --no-progress
 
-      - name: Compile Inno Setup Script
+      - name: Compile Inno Setup Installer
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
-      - name: Verify Generated Installer
+      - name: Build Electron Standalone Desktop Executable
+        run: |
+          npm install --save-dev electron electron-builder
+          npx electron-builder --win portable --publish never
+        continue-on-error: true
+
+      - name: Verify Generated Artifacts
         run: |
           Get-ChildItem -Path exports/
 
-      - name: Upload Installer Artifact
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RPA_Video_Editor_Setup_v2.0.0
-          path: exports/RPA_Video_Editor_Setup_v2.0.0.exe
+          name: RPA_Video_Editor_v2.0.0_Windows
+          path: |
+            exports/*.exe
+            exports/*.zip
 
       - name: Create GitHub Release (On Tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: exports/RPA_Video_Editor_Setup_v2.0.0.exe
-          name: RPA Video Editor ${{ github.ref_name }}
+          files: |
+            exports/RPA_Video_Editor_Setup_v2.0.0.exe
+            exports/RPA_Video_Editor_v2.0.0_Portable.zip
+            exports/RPA-Video-Editor-v2.0.0-Portable.exe
+          name: RPA Video Editor ${{ github.ref_name }} (Offline Desktop Edition)
           body: |
-            ## RPA Video Editor - Studio Pro v2.0.0
+            ## RPA Video Editor - Studio Pro v2.0.0 (Native Offline Desktop Edition)
             **Developer:** K Vanlalrengpuia (<rengakhiangte@gmail.com>)
             **License:** Open Source (MIT)
 
-            ### Highlights
-            - Independent Cleanroom Architecture: Zero proprietary code, assets, or trademarks.
-            - Extended Resolution Presets: 8K, 4K, 2K, 1080p, 720p, 480p, 9:16 Vertical, 1:1 Square, 4:5 Portrait, 21:9 Ultrawide, and Custom dimensions with Aspect Lock.
-            - Text Alignment: Full Horizontal (Left/Center/Right/Justify) and Vertical (Top/Middle/Bottom) dropdowns.
-            - Webcam Overlays & Effects: Device enumeration, Circle, Squircle, Hexagon, Diamond, Oval masks, custom size, borders, drop shadows, mirror flip.
-            - Model Context Protocol (MCP): Integrated JSON-RPC 2.0 stdio server (`mcp_server.js`) & HTTP API (`/api/mcp`).
-            - Performance: Desynchronized canvas GPU acceleration, idle render loop gating, and text metrics LRU caching.
+            ### 🚀 True Native Offline Desktop Experience (No Web Browser)
+            - **Native Desktop GUI:** Runs in its own dedicated, hardware-accelerated studio window (`RPA_Video_Editor.exe`). No browser tabs, no URL bar, no web browser popups.
+            - **100% Offline:** Operates entirely locally with zero internet dependencies.
+            - **Windows Smart App Control & SmartScreen Ready:** 
+              - Built with authentic Windows PE metadata and embedded application icon (`client/favicon.ico`).
+              - Includes **`unblock_app.bat`** / **`unblock_app.ps1`** to strip Mark-of-the-Web (`Zone.Identifier`) flags in 1-click.
+              - Portable ZIP release (`RPA_Video_Editor_v2.0.0_Portable.zip`) runs directly with no installation required.
+
+            ### 📦 Download Options
+            1. **`RPA_Video_Editor_v2.0.0_Portable.zip`**: Zero-install standalone portable edition. Extract anywhere and double-click `RPA_Video_Editor.exe`.
+            2. **`RPA_Video_Editor_Setup_v2.0.0.exe`**: Full Windows Installer with Desktop shortcuts and `.rpavideo` project file association.
+            3. **`RPA-Video-Editor-v2.0.0-Portable.exe`**: Single-binary standalone Electron package.
+
+            ### ✨ Key Features
+            - **Cleanroom Software Compliance:** Zero proprietary code, assets, or trademarks.
+            - **Extended Canvas Resolutions:** 8K, 4K, 2K, 1080p, 720p, 480p, 9:16 Vertical, 1:1 Square, 4:5 Portrait, 21:9 Ultrawide, and Custom Aspect Lock.
+            - **Inspector Sub-Menu:** Organized into dropdown categories with accordion sections for clean workflow.
+            - **Full Text Alignment:** Horizontal (Left/Center/Right/Justify) and Vertical (Top/Middle/Bottom) controls.
+            - **System Font Library:** Direct integration with all local Windows installed fonts.
+            - **Webcam Overlays & Masks:** Circle, Squircle, Hexagon, Diamond, Oval masks with custom borders and drop shadows.
+            - **Model Context Protocol (MCP):** Integrated JSON-RPC 2.0 stdio server (`mcp_server.js`) & HTTP API (`/api/mcp`).
           draft: false
           prerelease: false

@@ -90,10 +90,47 @@ Run the stdio server directly or connect via HTTP JSON-RPC at `http://127.0.0.1:
 
 ---
 
-## 📦 Building the Windows Installer
+## 🖥️ Native Offline Desktop Application (No Web Browser)
 
-### Local Build (Inno Setup 6)
-If Inno Setup 6 is installed on your Windows workstation:
+RPA Video Editor is a **100% offline native desktop application**:
+- **Dedicated Desktop Window:** Launches directly in its own hardware-accelerated studio window (`RPA_Video_Editor.exe`). No web browser tabs, no address bar, no web popups.
+- **Zero Internet Requirement:** All fonts, canvas compositing engines, audio processors, and telemetry recording run entirely offline on your local PC.
+- **Built-in Application Icon & PE Manifest:** Packed with custom 32-bit multi-resolution icon (`client/favicon.ico`) and embedded Windows metadata.
+
+---
+
+## 🛡️ Windows Smart App Control (SAC) & SmartScreen Resolution
+
+When downloading open-source software from GitHub, Windows 11 automatically attaches a `Zone.Identifier` stream (Mark of the Web). Windows 11 **Smart App Control (SAC)** may block newly downloaded executables that carry this flag.
+
+### Quick 1-Click Fix:
+1. Double-click **`unblock_app.bat`** inside the folder (or run `.\unblock_app.ps1` in PowerShell).
+2. It strips the Mark-of-the-Web flag instantly.
+3. Double-click **`RPA_Video_Editor.exe`** to launch the editor!
+
+*Alternative manual fix:* Right-click `RPA_Video_Editor.exe` (or the downloaded `.zip` / installer) $\to$ **Properties** $\to$ check the **Unblock** checkbox at the bottom $\to$ click **Apply**.
+
+---
+
+## 🏃 Quick Start & Launching
+
+To run RPA Video Editor locally:
+- **Direct Native Executable:** Double-click `RPA_Video_Editor.exe`.
+- **Electron Desktop Shell:** Run `npm start`.
+- **Background Server Only:** Run `node server/server.js`.
+
+---
+
+## 📦 Building the Windows Installer & Portable Packages
+
+### Local Native Desktop Build
+To compile the native Windows GUI executable (`RPA_Video_Editor.exe`) locally:
+```cmd
+build_native_desktop.bat
+```
+
+### Full Windows Installer & Portable ZIP Build
+If Inno Setup 6 is installed on your workstation:
 ```cmd
 build_installer.bat
 ```
@@ -101,25 +138,12 @@ or via PowerShell:
 ```powershell
 .\build_installer.ps1
 ```
-The compiled installer will be saved to:
-`exports\RPA_Video_Editor_Setup_v2.0.0.exe`
+This generates:
+1. `exports\RPA_Video_Editor_Setup_v2.0.0.exe` (Windows Installer)
+2. `exports\RPA_Video_Editor_v2.0.0_Portable.zip` (Zero-install Portable Package)
 
 ### Automated GitHub Actions CI/CD
-Push your repository or tag a release (`git tag v2.0.0 && git push origin v2.0.0`) to trigger the automated GitHub Actions workflow in `.github/workflows/build-installer.yml`. The standalone Windows Installer executable will be built and attached directly to your GitHub Release!
-
----
-
-## 🏃 Quick Start
-
-To launch the local portable environment:
-```cmd
-start_rpa_video_editor.bat
-```
-Or with Node.js directly:
-```cmd
-npm start
-```
-Then navigate to: `http://localhost:3800`
+Pushing to GitHub triggers `.github/workflows/build-installer.yml`, which automatically builds and publishes all desktop packages to [GitHub Releases](https://github.com/Rengpuia/rpa-video-editor/releases).
 
 ---
 

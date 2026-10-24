@@ -1,11 +1,9 @@
 @echo off
 title RPA Video Editor Pro
 cd /d "%~dp0"
-echo ======================================================
-echo           STARTING RPA VIDEO EDITOR STUDIO PRO
-echo ======================================================
-echo.
-echo Launching local media server on http://localhost:3800 ...
-start "" http://localhost:3800
+if exist "%~dp0RPA_Video_Editor.exe" (
+    start "" "%~dp0RPA_Video_Editor.exe"
+    exit /b
+)
+echo Starting RPA Video Editor Studio Desktop...
 node server\server.js
-pause
