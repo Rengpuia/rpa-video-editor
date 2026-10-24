@@ -641,11 +641,18 @@ class RpaCompositor {
             ctx.restore();
         }
 
-        // 4. Glow / Bloom
+        // 4. Glow / Bloom (Feathered luminous bloom, never a solid harsh box)
         if (fx.glow && fx.glow > 0) {
             ctx.save();
             ctx.globalCompositeOperation = 'lighter';
-            ctx.fillStyle = `rgba(255, 255, 255, ${fx.glow / 350})`;
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            const radGrad = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.15, cx, cy, Math.max(w, h) * 0.7);
+            const intensity = Math.min(0.55, fx.glow / 220);
+            radGrad.addColorStop(0, `rgba(255, 255, 255, ${intensity})`);
+            radGrad.addColorStop(0.5, `rgba(225, 240, 255, ${intensity * 0.4})`);
+            radGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = radGrad;
             ctx.fillRect(x, y, w, h);
             ctx.restore();
         }
@@ -1490,11 +1497,12 @@ class RpaCompositor {
     }
 
     computeBehavior(behavior, progress, relTime, duration, clip = null) {
+        const effBeh = (clip && clip.behavior !== undefined) ? clip.behavior : behavior;
+        if (!effBeh || effBeh === 'none') {
+            return { x: 0, y: 0, scale: 1.0, rotation: 0, opacity: 1.0 };
+        }
         if (clip && clip.behaviorProps) {
             return this.evaluateBehaviorProps(clip.behaviorProps, relTime, duration);
-        }
-        if (!behavior || behavior === 'none') {
-            return { x: 0, y: 0, scale: 1.0, rotation: 0, opacity: 1.0 };
         }
 
         // 1. Pop Up (Elastic Spring Bloom In & Pop Out)
@@ -1714,19 +1722,23 @@ class RpaCompositor {
         let alpha = 1.0;
         const tin = clip.transitionIn || 'none';
         const tout = clip.transitionOut || 'none';
-        const durIn = clip.transitionInDuration || 0.8;
-        const durOut = clip.transitionOutDuration || 0.8;
+        const hasInter = Array.isArray(clip.transitions) && clip.transitions.length > 0;
+        if (tin === 'none' && tout === 'none' && !hasInter) {
+            return 1.0;
+        }
+        const durIn = (tin !== 'none') ? (clip.transitionInDuration || 0.8) : 0;
+        const durOut = (tout !== 'none') ? (clip.transitionOutDuration || 0.8) : 0;
 
         const isFadeType = (name) => {
             return ['fade', 'fade-black', 'dissolve', 'film-fade', 'soft-blur', 'vignette-fade', 'soft-frost', 'ink-bloom'].includes(name);
         };
 
-        if (isFadeType(tin) && relTime < durIn) {
+        if (isFadeType(tin) && durIn > 0 && relTime < durIn) {
             const t = Math.max(0, Math.min(1, relTime / durIn));
             alpha = (tin === 'film-fade') ? Math.pow(t, 1.8) : t;
         }
 
-        if (isFadeType(tout)) {
+        if (isFadeType(tout) && durOut > 0) {
             const timeLeft = duration - relTime;
             if (timeLeft < durOut) {
                 const t = Math.max(0, Math.min(1, timeLeft / durOut));
@@ -1736,7 +1748,7 @@ class RpaCompositor {
         }
 
         // Intermediate Transitions Fade & Dip Support
-        if (Array.isArray(clip.transitions)) {
+        if (hasInter) {
             for (const it of clip.transitions) {
                 if (isFadeType(it.type) && relTime >= it.timeOffset && relTime <= (it.timeOffset + it.duration)) {
                     const localT = (relTime - it.timeOffset) / it.duration;
@@ -1753,8 +1765,12 @@ class RpaCompositor {
         const result = { x: 0, y: 0, scale: 1.0, rotation: 0 };
         const tin = clip.transitionIn || 'none';
         const tout = clip.transitionOut || 'none';
-        const durIn = clip.transitionInDuration || 0.8;
-        const durOut = clip.transitionOutDuration || 0.8;
+        const hasInter = Array.isArray(clip.transitions) && clip.transitions.length > 0;
+        if (tin === 'none' && tout === 'none' && !hasInter) {
+            return result;
+        }
+        const durIn = (tin !== 'none') ? (clip.transitionInDuration || 0.8) : 0;
+        const durOut = (tout !== 'none') ? (clip.transitionOutDuration || 0.8) : 0;
         const timeLeft = duration - relTime;
 
         // Entry Transitions
@@ -2444,12 +2460,18 @@ class RpaCompositor {
      * allowing callout container boxes, glass chassis, and speech bubbles to remain intact.
      */
     computeFontTransition(clip, relTime, duration) {
-        if (!clip) return { active: false, strobeVisible: true, textAlpha: 1.0, scale: 1.0, offsetX: 0, offsetY: 0, flashAlpha: 0, rgbSplit: 0 };
+        const def = { active: false, strobeVisible: true, textAlpha: 1.0, scale: 1.0, offsetX: 0, offsetY: 0, flashAlpha: 0, rgbSplit: 0 };
+        if (!clip) return def;
 
-        const durIn = clip.transitionInDuration || 0.8;
-        const durOut = clip.transitionOutDuration || 0.8;
         const tin = clip.transitionIn || 'none';
         const tout = clip.transitionOut || 'none';
+        const hasInter = Array.isArray(clip.transitions) && clip.transitions.length > 0;
+        if (tin === 'none' && tout === 'none' && !hasInter) {
+            return def;
+        }
+
+        const durIn = (tin !== 'none') ? (clip.transitionInDuration || 0.8) : 0;
+        const durOut = (tout !== 'none') ? (clip.transitionOutDuration || 0.8) : 0;
         const timeLeft = duration - relTime;
 
         let activeTrans = null;
@@ -2705,23 +2727,31 @@ class RpaCompositor {
         }
 
         // Layer 1: Soft Glow / Bloom (Expanded up to 100px, 1x-5x multi-pass bloom, opacity control)
-        if (clip.glowBlur && clip.glowBlur > 0) {
+        const effGlow = clip.glowBlur || (clip.visualEffects && clip.visualEffects.glow ? clip.visualEffects.glow * 0.45 : 0) || (clip.fx && clip.fx.glow ? clip.fx.glow * 0.45 : 0);
+        if (effGlow && effGlow > 0) {
             const glowAlpha = (clip.glowOpacity !== undefined ? clip.glowOpacity : 100) / 100;
-            const glowIntensity = Math.max(1, Math.min(5, clip.glowIntensity !== undefined ? clip.glowIntensity : 2));
-            const baseBlur = clip.glowBlur * bScale;
+            const glowIntensity = Math.max(1, Math.min(5, clip.glowIntensity !== undefined ? clip.glowIntensity : 3));
+            const baseBlur = effGlow * bScale;
             const glowColor = clip.glowColor || clip.color || '#00f2fe';
 
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
             for (let p = 1; p <= glowIntensity; p++) {
                 ctx.save();
-                ctx.globalAlpha *= glowAlpha;
+                ctx.globalAlpha = Math.min(1.0, glowAlpha * (0.6 / p));
                 ctx.shadowColor = glowColor;
-                ctx.shadowBlur = Math.round(baseBlur * (0.5 + p * 0.4));
+                ctx.shadowBlur = Math.round(baseBlur * (0.8 + p * 0.6));
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
                 ctx.fillStyle = glowColor;
                 ctx.fillText(textToDraw, targetX, targetY);
+                // Also stroke with radiant blur for contour luminance around each alphabet
+                ctx.strokeStyle = glowColor;
+                ctx.lineWidth = Math.max(1, Math.round(baseBlur * 0.12));
+                ctx.strokeText(textToDraw, targetX, targetY);
                 ctx.restore();
             }
+            ctx.restore();
         }
 
         // Layer 2: Drop Shadow (Expanded up to 80px, Offset X/Y -50px to +50px, opacity control)

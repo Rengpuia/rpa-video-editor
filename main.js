@@ -22,16 +22,59 @@ let isProjectDirty = false;
 let isQuittingForced = false;
 
 // IPC Handlers: Directory Picker
-ipcMain.handle('dialog:select-directory', async () => {
+ipcMain.handle('dialog:select-directory', async (event, options = {}) => {
     if (!mainWindow) return null;
     const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Select Video Output Folder',
+        title: options.title || 'Select Folder Destination',
+        defaultPath: options.defaultPath,
         properties: ['openDirectory', 'createDirectory']
     });
     if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
         return result.filePaths[0];
     }
     return null;
+});
+
+// IPC Handlers: Native Save Project Dialog
+ipcMain.handle('dialog:show-save-project', async (event, { defaultName, defaultPath } = {}) => {
+    if (!mainWindow) return null;
+    const initialName = (defaultName || 'project').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const startPath = defaultPath || path.join(app.getPath('documents'), 'RPA Video Editor', `${initialName}.rpavideo`);
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save RPA Video Project',
+        defaultPath: startPath,
+        filters: [
+            { name: 'RPA Video Project (*.rpavideo)', extensions: ['rpavideo'] },
+            { name: 'JSON Project File (*.json)', extensions: ['json'] },
+            { name: 'All Files (*.*)', extensions: ['*'] }
+        ]
+    });
+    if (!result.canceled && result.filePath) {
+        return result.filePath;
+    }
+    return null;
+});
+
+// IPC Handlers: Save Project Directly to Disk
+ipcMain.handle('project:save-to-disk', async (event, { filePath, content, targetDirectory, fileName }) => {
+    try {
+        let destPath = filePath;
+        if (!destPath) {
+            const destDir = (targetDirectory && fs.existsSync(targetDirectory))
+                ? targetDirectory
+                : path.join(app.getPath('documents'), 'RPA Video Editor');
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+            const cleanName = (fileName || 'project').replace(/[^a-zA-Z0-9_.-]/g, '_');
+            destPath = path.join(destDir, cleanName.endsWith('.rpavideo') || cleanName.endsWith('.json') ? cleanName : `${cleanName}.rpavideo`);
+        }
+        const dir = path.dirname(destPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(destPath, content, 'utf8');
+        return { success: true, path: destPath };
+    } catch (err) {
+        console.error('[Project Save Error]', err);
+        return { success: false, error: err.message };
+    }
 });
 
 // IPC Handlers: Save Exported File Directly to Disk

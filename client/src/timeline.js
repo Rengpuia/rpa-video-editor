@@ -829,6 +829,8 @@ class RpaTimeline {
                         e.stopPropagation();
                         e.preventDefault();
                         clip.transitionIn = 'none';
+                        delete clip.transitionIn;
+                        clip.transitionInDuration = 0;
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {
@@ -841,6 +843,8 @@ class RpaTimeline {
                         e.stopPropagation();
                         e.preventDefault();
                         clip.transitionOut = 'none';
+                        delete clip.transitionOut;
+                        clip.transitionOutDuration = 0;
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {
@@ -853,6 +857,9 @@ class RpaTimeline {
                         e.stopPropagation();
                         e.preventDefault();
                         clip.behavior = 'none';
+                        clip.behaviorProps = null;
+                        delete clip.behavior;
+                        delete clip.behaviorProps;
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {
@@ -1279,6 +1286,8 @@ class RpaTimeline {
                         e.stopPropagation();
                         e.preventDefault();
                         clip.transitionIn = 'none';
+                        delete clip.transitionIn;
+                        clip.transitionInDuration = 0;
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {
@@ -1291,6 +1300,8 @@ class RpaTimeline {
                         e.stopPropagation();
                         e.preventDefault();
                         clip.transitionOut = 'none';
+                        delete clip.transitionOut;
+                        clip.transitionOutDuration = 0;
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {
@@ -1303,6 +1314,9 @@ class RpaTimeline {
                         e.stopPropagation();
                         e.preventDefault();
                         clip.behavior = 'none';
+                        clip.behaviorProps = null;
+                        delete clip.behavior;
+                        delete clip.behaviorProps;
                         this.saveSnapshot();
                         this.render(containerEl, onClipSelected);
                         if (window.rpaStudio) {

@@ -2516,12 +2516,14 @@
 
                         <!-- RPA Video Editor Quick Style Presets -->
                         <div class="control-group" style="margin-top: 10px;">
-                            <label class="control-label">RPA Video Editor Presets</label>
+                            <label class="control-label">RPA Video Presets</label>
                             <div class="style-presets-bar">
                                 <button type="button" class="btn-style-preset" data-preset="tiktok" title="TikTok Viral Yellow">🟡 TikTok Yellow</button>
                                 <button type="button" class="btn-style-preset" data-preset="cyberpunk" title="Cyberpunk Neon Glow">⚡ Cyberpunk</button>
                                 <button type="button" class="btn-style-preset" data-preset="gold" title="Cinematic Gold Luxury">👑 Gold Luxury</button>
                                 <button type="button" class="btn-style-preset" data-preset="synthwave" title="Retro Synthwave Flare">🌆 Synthwave</button>
+                                <button type="button" class="btn-style-preset" data-preset="bloom" title="Soft Glow & Luminous Bloom">✨ Soft Glow / Bloom</button>
+                                <button type="button" class="btn-style-preset" data-preset="neon" title="Vibrant Neon Emerald Aura">🌟 Neon Glow</button>
                                 <button type="button" class="btn-style-preset" data-preset="impact" title="YouTube Punchy Impact">🔴 YouTube</button>
                                 <button type="button" class="btn-style-preset" data-preset="subtitle" title="Clean Minimalist Subtitle">💬 Subtitle</button>
                             </div>
@@ -3894,6 +3896,44 @@
         </div>
     </div>
 
+    <!-- 2.5 Save Project Modal with Output Location Picker -->
+    <div class="modal-overlay hidden" id="saveProjectModal">
+        <div class="modal-card" style="max-width: 520px;">
+            <div class="modal-header">
+                <div class="modal-title">💾 Save RPA Video Project</div>
+                <button class="modal-close" onclick="document.getElementById('saveProjectModal').classList.add('hidden')">×</button>
+            </div>
+            <div class="control-group">
+                <label class="control-label">Project Name</label>
+                <input type="text" class="control-input" id="txtSaveProjectTitle" value="RPA_Workflow_Video" placeholder="Enter project name">
+            </div>
+            <div class="control-group">
+                <label class="control-label" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Project Output Location</span>
+                    <span id="lblProjectFolderStatus" style="font-size: 10px; color: #38bdf8;">Custom Destination</span>
+                </label>
+                <div style="display: flex; gap: 6px;">
+                    <input type="text" class="control-input" id="txtProjectOutputFolder" placeholder="Default: Documents / RPA Video Editor" style="flex: 1; font-family: monospace; font-size: 11px;">
+                    <button type="button" class="btn btn-secondary" id="btnBrowseProjectFolder" style="white-space: nowrap; font-size: 11px; padding: 6px 12px;" title="Select destination folder on your computer">📁 Browse...</button>
+                </div>
+            </div>
+            <div class="control-group">
+                <label class="control-label">Format</label>
+                <select class="control-input" id="selSaveProjectFormat">
+                    <option value="rpavideo" selected>.rpavideo (Native RPA Studio Project)</option>
+                    <option value="json">.json (Universal JSON Format)</option>
+                </select>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 22px;">
+                <button type="button" class="btn btn-secondary" id="btnSaveProjectAsNative" style="font-size: 11px;" title="Save with custom file name and path">📁 Save As...</button>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('saveProjectModal').classList.add('hidden')">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="btnConfirmSaveProject">💾 Save Project</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 3. Project Settings Modal -->
     <div class="modal-overlay hidden" id="projectSettingsModal">
         <div class="modal-card">
@@ -3938,6 +3978,16 @@
                         <option value="transparent">Transparent (Alpha / PNG)</option>
                     </select>
                     <input type="color" id="colProjectBackground" value="#0f1115" class="control-input" style="height: 38px; cursor: pointer;">
+                </div>
+            </div>
+            <div class="control-group">
+                <label class="control-label" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Default Project Save Location</span>
+                    <span id="lblCanvasProjectFolderStatus" style="font-size: 10px; color: #38bdf8;">Custom Destination</span>
+                </label>
+                <div style="display: flex; gap: 6px;">
+                    <input type="text" class="control-input" id="txtCanvasProjectOutputFolder" placeholder="Default: Documents / RPA Video Editor" style="flex: 1; font-family: monospace; font-size: 11px;">
+                    <button type="button" class="btn btn-secondary" id="btnBrowseCanvasProjectFolder" style="white-space: nowrap; font-size: 11px; padding: 6px 12px;" title="Select destination folder on your computer">📁 Browse...</button>
                 </div>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">

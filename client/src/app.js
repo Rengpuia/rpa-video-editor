@@ -286,10 +286,88 @@ class RpaStudioApp {
         if (btnBrowseOutput && txtOutputFolder) {
             btnBrowseOutput.onclick = async () => {
                 if (window.rpaNative && window.rpaNative.selectDirectory) {
-                    const dir = await window.rpaNative.selectDirectory();
+                    const dir = await window.rpaNative.selectDirectory({ title: 'Select Video Export Folder' });
                     if (dir) txtOutputFolder.value = dir;
                 } else {
                     alert('Custom output folder selection is available in the desktop application.');
+                }
+            };
+        }
+
+        // Project Output Location Folder Pickers (Save Modal & Canvas Settings)
+        this.projectOutputDir = localStorage.getItem('rpa_project_output_dir') || '';
+        const txtProjFolder = document.getElementById('txtProjectOutputFolder');
+        const txtCanvasProjFolder = document.getElementById('txtCanvasProjectOutputFolder');
+        if (txtProjFolder && this.projectOutputDir) txtProjFolder.value = this.projectOutputDir;
+        if (txtCanvasProjFolder && this.projectOutputDir) txtCanvasProjFolder.value = this.projectOutputDir;
+
+        const updateSavedProjectDir = (dir) => {
+            if (!dir) return;
+            this.projectOutputDir = dir;
+            localStorage.setItem('rpa_project_output_dir', dir);
+            if (txtProjFolder) txtProjFolder.value = dir;
+            if (txtCanvasProjFolder) txtCanvasProjFolder.value = dir;
+            const lblStatus = document.getElementById('lblProjectFolderStatus');
+            if (lblStatus) lblStatus.innerText = 'Custom Folder Active';
+            const lblCanvasStatus = document.getElementById('lblCanvasProjectFolderStatus');
+            if (lblCanvasStatus) lblCanvasStatus.innerText = 'Custom Folder Active';
+        };
+
+        const btnBrowseProj = document.getElementById('btnBrowseProjectFolder');
+        if (btnBrowseProj) {
+            btnBrowseProj.onclick = async () => {
+                if (window.rpaNative && window.rpaNative.selectDirectory) {
+                    const dir = await window.rpaNative.selectDirectory({ title: 'Select Project Output Folder', defaultPath: this.projectOutputDir });
+                    if (dir) updateSavedProjectDir(dir);
+                } else {
+                    const customPath = prompt('Enter project destination folder:', this.projectOutputDir || '');
+                    if (customPath) updateSavedProjectDir(customPath.trim());
+                }
+            };
+        }
+
+        const btnBrowseCanvasProj = document.getElementById('btnBrowseCanvasProjectFolder');
+        if (btnBrowseCanvasProj) {
+            btnBrowseCanvasProj.onclick = async () => {
+                if (window.rpaNative && window.rpaNative.selectDirectory) {
+                    const dir = await window.rpaNative.selectDirectory({ title: 'Select Default Project Save Folder', defaultPath: this.projectOutputDir });
+                    if (dir) updateSavedProjectDir(dir);
+                } else {
+                    const customPath = prompt('Enter project destination folder:', this.projectOutputDir || '');
+                    if (customPath) updateSavedProjectDir(customPath.trim());
+                }
+            };
+        }
+
+        const btnConfirmSave = document.getElementById('btnConfirmSaveProject');
+        if (btnConfirmSave) {
+            btnConfirmSave.onclick = async () => {
+                const title = (document.getElementById('txtSaveProjectTitle')?.value || 'RPA_Workflow_Video').trim();
+                const targetDir = document.getElementById('txtProjectOutputFolder')?.value?.trim() || this.projectOutputDir || null;
+                const format = document.getElementById('selSaveProjectFormat')?.value || 'rpavideo';
+                document.getElementById('saveProjectModal').classList.add('hidden');
+                await this.executeSaveProject(title, targetDir, format, false);
+            };
+        }
+
+        const btnSaveAsNative = document.getElementById('btnSaveProjectAsNative');
+        if (btnSaveAsNative) {
+            btnSaveAsNative.onclick = async () => {
+                const cleanTitle = (document.getElementById('txtSaveProjectTitle')?.value || 'RPA_Workflow_Video').trim();
+                if (window.rpaNative && window.rpaNative.showSaveProjectDialog) {
+                    const filePath = await window.rpaNative.showSaveProjectDialog({
+                        defaultName: cleanTitle,
+                        defaultPath: this.projectOutputDir ? `${this.projectOutputDir}\\${cleanTitle}.rpavideo` : undefined
+                    });
+                    if (filePath) {
+                        document.getElementById('saveProjectModal').classList.add('hidden');
+                        await this.writeProjectToPath(filePath, cleanTitle);
+                    }
+                } else {
+                    const targetDir = document.getElementById('txtProjectOutputFolder')?.value?.trim() || this.projectOutputDir || null;
+                    const format = document.getElementById('selSaveProjectFormat')?.value || 'rpavideo';
+                    document.getElementById('saveProjectModal').classList.add('hidden');
+                    await this.executeSaveProject(cleanTitle, targetDir, format, false);
                 }
             };
         }
@@ -1169,7 +1247,9 @@ class RpaStudioApp {
                     clip.letterCase = "uppercase";
                     clip.fillType = "grad-cyberpunk";
                     clip.glowColor = "#00f2fe";
-                    clip.glowBlur = 18;
+                    clip.glowBlur = 25;
+                    clip.glowIntensity = 3;
+                    clip.glowOpacity = 100;
                     clip.outlineColor = "#ff007f";
                     clip.outlineThickness = 3;
                     clip.tracking = 4;
@@ -1188,10 +1268,42 @@ class RpaStudioApp {
                     clip.letterCase = "uppercase";
                     clip.fillType = "grad-sunset";
                     clip.glowColor = "#f72585";
-                    clip.glowBlur = 15;
+                    clip.glowBlur = 22;
+                    clip.glowIntensity = 3;
+                    clip.glowOpacity = 100;
                     clip.outlineColor = "#4361ee";
                     clip.outlineThickness = 4;
                     clip.tracking = 3;
+                } else if (p === 'bloom') {
+                    clip.fontFamily = "'Montserrat', sans-serif";
+                    clip.fontWeight = "bold";
+                    clip.letterCase = "uppercase";
+                    clip.color = "#ffffff";
+                    clip.fillType = "solid";
+                    clip.glowColor = "#38bdf8";
+                    clip.glowBlur = 32;
+                    clip.glowIntensity = 4;
+                    clip.glowOpacity = 100;
+                    clip.outlineColor = "#0284c7";
+                    clip.outlineThickness = 2;
+                    clip.shadowColor = "rgba(0,0,0,0.8)";
+                    clip.shadowBlur = 10;
+                    clip.tracking = 3;
+                } else if (p === 'neon') {
+                    clip.fontFamily = "'Oswald', sans-serif";
+                    clip.fontWeight = "bold";
+                    clip.letterCase = "uppercase";
+                    clip.color = "#ecfdf5";
+                    clip.fillType = "solid";
+                    clip.glowColor = "#10b981";
+                    clip.glowBlur = 28;
+                    clip.glowIntensity = 3;
+                    clip.glowOpacity = 100;
+                    clip.outlineColor = "#059669";
+                    clip.outlineThickness = 3;
+                    clip.shadowColor = "rgba(0,0,0,0.75)";
+                    clip.shadowBlur = 12;
+                    clip.tracking = 4;
                 } else if (p === 'impact') {
                     clip.fontFamily = "'Bebas Neue', sans-serif";
                     clip.fontWeight = "bold";
@@ -1240,6 +1352,8 @@ class RpaStudioApp {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip) {
                     clip.transitionIn = 'none';
+                    delete clip.transitionIn;
+                    clip.transitionInDuration = 0;
                     if (selTransitionIn) selTransitionIn.value = 'none';
                     this.renderTimeline();
                     this.timeline.saveSnapshot();
@@ -1253,6 +1367,10 @@ class RpaStudioApp {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip) {
                     clip.transitionOut = e.target.value;
+                    if (clip.transitionOut === 'none') {
+                        delete clip.transitionOut;
+                        clip.transitionOutDuration = 0;
+                    }
                     this.renderTimeline();
                     this.timeline.saveSnapshot();
                     this.compositor.renderFrame(this.timeline, this.playheadTime);
@@ -1265,6 +1383,8 @@ class RpaStudioApp {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip) {
                     clip.transitionOut = 'none';
+                    delete clip.transitionOut;
+                    clip.transitionOutDuration = 0;
                     if (selTransitionOut) selTransitionOut.value = 'none';
                     this.renderTimeline();
                     this.timeline.saveSnapshot();
@@ -1294,7 +1414,11 @@ class RpaStudioApp {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip) {
                     clip.transitionIn = 'none';
+                    delete clip.transitionIn;
                     clip.transitionOut = 'none';
+                    delete clip.transitionOut;
+                    clip.transitionInDuration = 0;
+                    clip.transitionOutDuration = 0;
                     clip.transitions = [];
                     if (selTransitionIn) selTransitionIn.value = 'none';
                     if (selTransitionOut) selTransitionOut.value = 'none';
@@ -1327,7 +1451,10 @@ class RpaStudioApp {
                     if (clip.behavior !== 'none') {
                         clip.behaviorProps = this.getDefaultBehaviorProps(clip.behavior);
                     } else {
+                        clip.behavior = 'none';
+                        delete clip.behavior;
                         clip.behaviorProps = null;
+                        delete clip.behaviorProps;
                     }
                     this.renderProperties(clip);
                     this.renderTimeline();
@@ -1359,7 +1486,9 @@ class RpaStudioApp {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip) {
                     clip.behavior = 'none';
+                    delete clip.behavior;
                     clip.behaviorProps = null;
+                    delete clip.behaviorProps;
                     if (selBehavior) selBehavior.value = 'none';
                     this.renderProperties(clip);
                     this.renderTimeline();
@@ -4809,28 +4938,37 @@ class RpaStudioApp {
     }
 
     async saveProject(isAutoPrompt = false) {
-        const defaultName = this.compositor.projectSettings?.name || 'RPA_Workflow_Video';
-        let cleanTitle = defaultName;
         if (!isAutoPrompt) {
-            const title = prompt('Project Name:', defaultName);
-            if (title === null) return; // User pressed Cancel
-            cleanTitle = (title || 'Untitled').trim();
+            const modal = document.getElementById('saveProjectModal');
+            if (modal) {
+                const titleInput = document.getElementById('txtSaveProjectTitle');
+                if (titleInput) titleInput.value = this.compositor.projectSettings?.name || 'RPA_Workflow_Video';
+                const folderInput = document.getElementById('txtProjectOutputFolder');
+                if (folderInput) folderInput.value = this.projectOutputDir || localStorage.getItem('rpa_project_output_dir') || '';
+                modal.classList.remove('hidden');
+                return;
+            }
         }
 
-        // Sanitize clips: strip DOM references, preview elements, and non-serializable objects
+        const defaultName = this.compositor.projectSettings?.name || 'RPA_Workflow_Video';
+        await this.executeSaveProject(defaultName, this.projectOutputDir, 'rpavideo', isAutoPrompt);
+    }
+
+    async writeProjectToPath(filePath, cleanTitle) {
         const sanitizedClips = (this.timeline.clips || []).map(clip => {
             const { element, _previewEl, cachedImage, audioBuffer, video, sourceElement, mediaStream, ...safeClip } = clip;
             return safeClip;
         });
 
         const projectData = {
-            title: cleanTitle,
+            title: cleanTitle || 'Untitled',
             duration: this.timeline.totalDuration,
             tracks: this.timeline.tracks,
             clips: sanitizedClips,
             markers: this.timeline.markers || [],
             captions: this.timeline.captions || [],
-            projectSettings: this.compositor.projectSettings || {}
+            projectSettings: this.compositor.projectSettings || {},
+            filePath
         };
 
         const safeJson = JSON.stringify(projectData, (key, value) => {
@@ -4839,6 +4977,15 @@ class RpaStudioApp {
             }
             return value;
         }, 2);
+
+        if (window.rpaNative && window.rpaNative.saveProjectToDisk) {
+            const res = await window.rpaNative.saveProjectToDisk({ filePath, content: safeJson });
+            if (res && res.success) {
+                this.markDirty(false);
+                alert(`Project successfully saved!\nLocation: ${res.path}`);
+                return;
+            }
+        }
 
         try {
             const res = await fetch('/api/projects/save', {
@@ -4849,7 +4996,68 @@ class RpaStudioApp {
             const data = await res.json();
             if (res.ok && data.success) {
                 this.markDirty(false);
-                if (!isAutoPrompt) alert(`Project successfully saved!\nLocation: ${data.path || data.id}`);
+                alert(`Project successfully saved!\nLocation: ${data.path || data.id}`);
+            } else {
+                throw new Error(data.error || 'Server error saving project');
+            }
+        } catch (err) {
+            console.error('[Save Project Path Error]', err);
+            alert(`Project saved: ${filePath}`);
+            this.markDirty(false);
+        }
+    }
+
+    async executeSaveProject(cleanTitle, targetDir, format = 'rpavideo', isSilent = false) {
+        const sanitizedClips = (this.timeline.clips || []).map(clip => {
+            const { element, _previewEl, cachedImage, audioBuffer, video, sourceElement, mediaStream, ...safeClip } = clip;
+            return safeClip;
+        });
+
+        const projectData = {
+            title: cleanTitle || 'Untitled',
+            duration: this.timeline.totalDuration,
+            tracks: this.timeline.tracks,
+            clips: sanitizedClips,
+            markers: this.timeline.markers || [],
+            captions: this.timeline.captions || [],
+            projectSettings: this.compositor.projectSettings || {},
+            targetDirectory: targetDir || this.projectOutputDir || null,
+            extension: format
+        };
+
+        const safeJson = JSON.stringify(projectData, (key, value) => {
+            if (key === 'element' || key === '_previewEl' || key === 'cachedImage' || key === 'audioBuffer' || key === 'video' || key === 'sourceElement' || key === 'mediaStream') {
+                return undefined;
+            }
+            return value;
+        }, 2);
+
+        // A. Desktop Native File Save (Zero-overhead direct disk write)
+        if (window.rpaNative && window.rpaNative.saveProjectToDisk) {
+            const safeFileName = (cleanTitle || 'project').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const res = await window.rpaNative.saveProjectToDisk({
+                targetDirectory: targetDir || this.projectOutputDir || null,
+                fileName: `${safeFileName}.${format}`,
+                content: safeJson
+            });
+            if (res && res.success) {
+                this.markDirty(false);
+                if (!isSilent) alert(`Project successfully saved!\nLocation: ${res.path}`);
+                return;
+            }
+        }
+
+        // B. Server API Save
+        try {
+            const res = await fetch('/api/projects/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: safeJson
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.markDirty(false);
+                if (!isSilent) alert(`Project successfully saved!\nLocation: ${data.path || data.id}`);
             } else {
                 throw new Error(data.error || 'Server error saving project');
             }
@@ -4860,13 +5068,13 @@ class RpaStudioApp {
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             const safeFileName = cleanTitle.replace(/[^a-zA-Z0-9_-]/g, '_') || 'project';
-            a.download = `${safeFileName}.rpavideo`;
+            a.download = `${safeFileName}.${format}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
             this.markDirty(false);
-            if (!isAutoPrompt) alert(`Project saved directly to your Downloads folder as "${safeFileName}.rpavideo".\nNotice: ${err.message}`);
+            if (!isSilent) alert(`Project saved directly to your Downloads folder as "${safeFileName}.${format}".\nNotice: ${err.message}`);
         }
     }
 

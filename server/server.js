@@ -150,13 +150,17 @@ function handleApiRequest(req, res, url) {
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
             try {
-                if (!fs.existsSync(PROJECTS_DIR)) {
-                    fs.mkdirSync(PROJECTS_DIR, { recursive: true });
-                }
                 const project = JSON.parse(body);
+                let targetDir = (project.targetDirectory && fs.existsSync(project.targetDirectory)) 
+                    ? project.targetDirectory 
+                    : PROJECTS_DIR;
+                if (!fs.existsSync(targetDir)) {
+                    fs.mkdirSync(targetDir, { recursive: true });
+                }
                 let id = (project.title || 'untitled').trim().replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
                 id = id.replace(/^_+|_+$/g, '') || `project_${Date.now()}`;
-                const filePath = path.join(PROJECTS_DIR, `${id}.rpavideo`);
+                const ext = project.extension || 'rpavideo';
+                const filePath = project.filePath || path.join(targetDir, `${id}.${ext}`);
                 fs.writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf8');
                 return sendJson(res, 200, { success: true, id, path: filePath });
             } catch (err) {
