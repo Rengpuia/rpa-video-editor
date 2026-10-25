@@ -4083,6 +4083,37 @@ class RpaCompositor {
     }
 
     /**
+     * Interpolate Manual Track Point or Keyframed Track Points for Magnify / Highlight Lens
+     */
+    getInterpolatedTrackPoint(clip, relTime, width, height) {
+        if (clip.trackPoints && clip.trackPoints.length > 0) {
+            const sorted = [...clip.trackPoints].sort((a, b) => a.time - b.time);
+            if (relTime <= sorted[0].time) {
+                return { x: sorted[0].x * width, y: sorted[0].y * height };
+            }
+            if (relTime >= sorted[sorted.length - 1].time) {
+                const last = sorted[sorted.length - 1];
+                return { x: last.x * width, y: last.y * height };
+            }
+            for (let i = 0; i < sorted.length - 1; i++) {
+                const k1 = sorted[i];
+                const k2 = sorted[i + 1];
+                if (relTime >= k1.time && relTime <= k2.time) {
+                    const segProg = (relTime - k1.time) / Math.max(0.001, k2.time - k1.time);
+                    const eased = segProg * segProg * (3 - 2 * segProg); // smooth cubic ease
+                    const nx = k1.x + (k2.x - k1.x) * eased;
+                    const ny = k1.y + (k2.y - k1.y) * eased;
+                    return { x: nx * width, y: ny * height };
+                }
+            }
+        }
+        if (clip.trackPoint && typeof clip.trackPoint.x === 'number' && typeof clip.trackPoint.y === 'number') {
+            return { x: clip.trackPoint.x * width, y: clip.trackPoint.y * height };
+        }
+        return null;
+    }
+
+    /**
      * Compute Smooth Motion Tracking target coordinates from the underlying media clip
      * Tracks keyframes, dynamic behaviors, and screen recording telemetry from media clips
      */
@@ -4091,16 +4122,21 @@ class RpaCompositor {
         const absTime = (clip.startTime || 0) + relTime;
 
         // Find active video or image media clip under the magnify lens at current playhead
-        const mediaClips = this.lastTimeline.clips.filter(c =>
-            (c.type === 'video' || c.type === 'image') &&
-            absTime >= c.startTime && absTime <= (c.startTime + c.duration)
-        ).sort((a, b) => b.trackId - a.trackId);
-
-        const targetMedia = mediaClips[0];
+        let targetMedia = null;
+        if (clip.targetMediaId) {
+            targetMedia = this.lastTimeline.clips.find(c => c.id === clip.targetMediaId);
+        }
+        if (!targetMedia) {
+            const mediaClips = this.lastTimeline.clips.filter(c =>
+                (c.type === 'video' || c.type === 'image') &&
+                absTime >= c.startTime && absTime <= (c.startTime + c.duration)
+            ).sort((a, b) => b.trackId - a.trackId);
+            targetMedia = mediaClips[0];
+        }
         if (!targetMedia) return null;
 
         const mediaRel = absTime - targetMedia.startTime;
-        const mediaProg = Math.max(0, Math.min(1, mediaRel / targetMedia.duration));
+        const mediaProg = Math.max(0, Math.min(1, mediaRel / Math.max(0.001, targetMedia.duration)));
         const mediaKf = this.computeKeyframes(targetMedia, mediaRel);
         const mediaBeh = this.computeBehavior(targetMedia.behavior, mediaProg, mediaRel, targetMedia.duration, targetMedia);
 
@@ -4121,9 +4157,9 @@ class RpaCompositor {
         const targetX = mediaCenterX + (clip.xOffset || 0);
         const targetY = mediaCenterY + (clip.yOffset || 0);
 
-        // Apply smoothing / inertia filter
+        // Apply smoothing / inertia filter with scrub/seek continuity guard
         const smooth = Math.max(0, Math.min(1, (clip.trackingSmooth !== undefined ? clip.trackingSmooth : 0.5)));
-        if (clip._lastTrackedX === undefined || isNaN(clip._lastTrackedX)) {
+        if (clip._lastTrackedX === undefined || isNaN(clip._lastTrackedX) || Math.abs(absTime - (clip._lastTrackedTime || 0)) > 0.15) {
             clip._lastTrackedX = targetX;
             clip._lastTrackedY = targetY;
         } else {
@@ -4131,6 +4167,7 @@ class RpaCompositor {
             clip._lastTrackedX += (targetX - clip._lastTrackedX) * factor;
             clip._lastTrackedY += (targetY - clip._lastTrackedY) * factor;
         }
+        clip._lastTrackedTime = absTime;
 
         return { x: clip._lastTrackedX, y: clip._lastTrackedY };
     }
@@ -4144,12 +4181,18 @@ class RpaCompositor {
         const lw = (clip.width !== undefined && clip.width > 0) ? clip.width : (isDefaultFull ? 360 : drawW);
         const lh = (clip.height !== undefined && clip.height > 0) ? clip.height : (isDefaultFull ? 360 : drawH);
 
-        // Motion Tracking: Cursor Telemetry or Media Motion Target Follow
+        // Motion Tracking: Cursor Telemetry, Manual Track Point, or Media Motion Target Follow
         if (clip.trackingMode === 'cursor' && clip.startTime !== undefined) {
             const curPoint = this.getInterpolatedCursor(clip.startTime + relTime);
             if (curPoint && curPoint.x !== undefined && curPoint.y !== undefined) {
                 cx = curPoint.x * width + (clip.xOffset || 0);
                 cy = curPoint.y * height + (clip.yOffset || 0);
+            }
+        } else if (clip.trackingMode === 'point') {
+            const pt = this.getInterpolatedTrackPoint(clip, relTime, width, height);
+            if (pt) {
+                cx = pt.x + (clip.xOffset || 0);
+                cy = pt.y + (clip.yOffset || 0);
             }
         } else if (clip.trackingMode === 'motion') {
             const trackedPos = this.getTrackedMediaMotion(clip, relTime, width, height);
@@ -4264,6 +4307,49 @@ class RpaCompositor {
             this.drawGuideBadge(cx, cy + lh / 2 + 18, clip.text, false);
         }
 
+        // 7. Interactive Canvas Manual Track Point Crosshair Target
+        if (window.rpaStudio && (window.rpaStudio.isPickingTrackPoint || clip.trackingMode === 'point') && window.rpaStudio.timeline?.selectedClipId === clip.id) {
+            this.drawTrackPointCrosshair(cx, cy);
+        }
+
+        this.ctx.restore();
+    }
+
+    drawTrackPointCrosshair(x, y) {
+        this.ctx.save();
+        this.ctx.strokeStyle = '#38bdf8';
+        this.ctx.fillStyle = '#38bdf8';
+        this.ctx.lineWidth = 2;
+        this.ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+        this.ctx.shadowBlur = 6;
+
+        // Concentric reticle rings
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, 16, 0, Math.PI * 2);
+        this.ctx.stroke();
+
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, 7, 0, Math.PI * 2);
+        this.ctx.stroke();
+
+        // Center dot
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Crosshairs
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - 24, y); this.ctx.lineTo(x - 9, y);
+        this.ctx.moveTo(x + 9, y);  this.ctx.lineTo(x + 24, y);
+        this.ctx.moveTo(x, y - 24); this.ctx.lineTo(x, y - 9);
+        this.ctx.moveTo(x, y + 9);  this.ctx.lineTo(x, y + 24);
+        this.ctx.stroke();
+
+        // Target coordinates HUD badge
+        this.ctx.font = 'bold 11px monospace';
+        this.ctx.fillStyle = '#38bdf8';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(`TRACK (${Math.round(x)}, ${Math.round(y)})`, x + 18, y - 10);
         this.ctx.restore();
     }
 

@@ -30,11 +30,8 @@
             <button class="btn btn-secondary" id="btnNewProject" title="New Blank Project (Ctrl+N)">
                 <span>📄</span> New
             </button>
-            <button class="btn btn-danger" id="btnOpenRecordModal" title="Record Screen & Microphone (R)">
-                <span style="font-size: 15px;">⏺</span> Record
-            </button>
             <button class="btn btn-secondary" id="btnImportMedia" title="Import Video, Audio, or Images (Ctrl+I)">
-                <span>📁</span> Import
+                <span>📁</span> Import Media
             </button>
             <input type="file" id="fileInput" accept="video/*,audio/*,image/*" style="display: none;" multiple>
             <button class="btn btn-secondary" id="btnSaveProject" title="Save Project (Ctrl+S)">
@@ -129,7 +126,7 @@
                     <div id="mediaList">
                         <div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 24px 12px; border: 1px dashed var(--border-color); border-radius: 6px;">
                             <span style="font-size: 28px; display: block; margin-bottom: 6px;">📁</span>
-                            <span>Media Bin is empty.<br>Click <strong>+ Import Media</strong> or record screen to add clips.</span>
+                            <span>Media Bin is empty.<br>Click <strong>+ Import Media</strong> to add video, audio, or image clips.</span>
                         </div>
                     </div>
                 </div>
@@ -2623,23 +2620,35 @@
 
                 <!-- Active Clip Controls Container -->
                 <div id="inspectorClipControls">
-                    <!-- Properties Sub-Menu Dropdown for Cleaner UI -->
-                    <div class="control-group" id="grpPropertiesSubMenu" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.25);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                            <label class="control-label" style="margin: 0; font-size: 10px; font-weight: 700; color: #38bdf8; letter-spacing: 0.5px;">PROPERTIES SUB-MENU</label>
+                    <!-- Contextual Categorized Property Pill Bar -->
+                    <div class="inspector-category-bar" id="grpPropertiesSubMenu" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.25);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                            <label class="control-label" style="margin: 0; font-size: 10px; font-weight: 700; color: #38bdf8; letter-spacing: 0.5px;">PROPERTIES</label>
                             <span id="lblActiveClipTypeBadge" style="font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 3px; background: rgba(56, 189, 248, 0.2); color: #7dd3fc; text-transform: uppercase;">CLIP</span>
                         </div>
-                        <select class="control-input" id="selPropertiesSubMenu" style="font-size: 11.5px; font-weight: 600; padding: 5px 8px; border-radius: 4px; background: #0f172a; color: #f8fafc; border: 1px solid rgba(56, 189, 248, 0.4); cursor: pointer;">
-                            <option value="all" selected>📋 All Properties (Full View)</option>
-                            <option value="magnify">🔍 Zoom, Magnify & Highlight</option>
-                            <option value="callout">💬 Callout, Fonts & Text</option>
-                            <option value="transform">📐 Transform, Position & Scale</option>
-                            <option value="timing">⏱️ Clip Timing & Playback Speed</option>
-                            <option value="behaviors">✨ Motion Physics Behaviors</option>
-                            <option value="animations">🎬 Keyframe Animations & Zoom</option>
-                            <option value="visual">🎨 Visual Effects & Color Grade</option>
-                            <option value="audio">🔊 Audio Levels & Volume</option>
-                            <option value="transitions">🔄 Transitions & Fades</option>
+                        <div class="category-pills-container" id="inspectorCategoryPills" style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <button type="button" class="cat-pill active" data-cat="all">📋 All</button>
+                            <button type="button" class="cat-pill" data-cat="timing">⏱ Timing</button>
+                            <button type="button" class="cat-pill" data-cat="callout">💬 Text</button>
+                            <button type="button" class="cat-pill" data-cat="magnify">🔍 Zoom Lens</button>
+                            <button type="button" class="cat-pill" data-cat="transform">📐 Transform</button>
+                            <button type="button" class="cat-pill" data-cat="visual">🎨 Visual FX</button>
+                            <button type="button" class="cat-pill" data-cat="audio">🔊 Audio</button>
+                            <button type="button" class="cat-pill" data-cat="transitions">🔄 Transitions</button>
+                            <button type="button" class="cat-pill" data-cat="behaviors">✨ Behaviors</button>
+                            <button type="button" class="cat-pill" data-cat="animations">🎬 Keyframes</button>
+                        </div>
+                        <select id="selPropertiesSubMenu" style="display: none;">
+                            <option value="all" selected>all</option>
+                            <option value="timing">timing</option>
+                            <option value="callout">callout</option>
+                            <option value="magnify">magnify</option>
+                            <option value="transform">transform</option>
+                            <option value="visual">visual</option>
+                            <option value="audio">audio</option>
+                            <option value="transitions">transitions</option>
+                            <option value="behaviors">behaviors</option>
+                            <option value="animations">animations</option>
                         </select>
                     </div>
                     <!-- General Clip Info & Timing -->
@@ -3205,8 +3214,34 @@
                                 <label class="control-label">Tracking Mode</label>
                                 <select class="control-input" id="propMagTrackingMode">
                                     <option value="fixed">📌 Fixed Timeline Position</option>
+                                    <option value="motion">🎬 Follow Motion (Target Media)</option>
+                                    <option value="point">🎯 Manual Track Point</option>
                                     <option value="cursor">🖱 Follow Screen Cursor Telemetry</option>
-                                    <option value="motion">🎬 Follow Motion (Media Target)</option>
+                                </select>
+                            </div>
+                            <div class="control-group" id="groupMagManualTrackPoint" style="display: none; background: rgba(56, 189, 248, 0.08); padding: 8px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.25);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <label class="control-label" style="margin: 0; color: #38bdf8;">Track Point Coordinates</label>
+                                    <button type="button" class="btn btn-secondary" id="btnPickMagTrackPoint" style="font-size: 9px; padding: 2px 7px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5);" title="Click on the video canvas to pick the track point">🎯 Pick on Canvas</button>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                    <div>
+                                        <label style="font-size: 9.5px; color: var(--text-secondary); display: block; margin-bottom: 2px;">Track X (%)</label>
+                                        <input type="number" class="control-input" id="numMagTrackX" min="0" max="100" step="1" value="50" style="text-align: center; height: 24px; font-size: 11px;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 9.5px; color: var(--text-secondary); display: block; margin-bottom: 2px;">Track Y (%)</label>
+                                        <input type="number" class="control-input" id="numMagTrackY" min="0" max="100" step="1" value="50" style="text-align: center; height: 24px; font-size: 11px;">
+                                    </div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                                    <button type="button" class="btn btn-secondary" id="btnAddMagTrackKeyframe" style="width: 100%; font-size: 9.5px; padding: 3px;" title="Save current position as track keyframe at playhead">+ Add Track Keyframe at Playhead</button>
+                                </div>
+                            </div>
+                            <div class="control-group" id="groupMagTargetMedia" style="display: none;">
+                                <label class="control-label">Target Media to Follow</label>
+                                <select class="control-input" id="selMagTargetMedia">
+                                    <option value="">Auto-Detect Underlying Video/Image</option>
                                 </select>
                             </div>
                             <div class="control-group" id="groupMagTrackingSmooth">
@@ -4095,162 +4130,6 @@
         </div>
     </footer>
 
-    <!-- 1. Screen Recording Setup Modal -->
-    <div class="modal-overlay hidden" id="recordModal">
-        <div class="modal-card" style="max-width: 480px;">
-            <div class="modal-header">
-                <div class="modal-title">🔴 Screen & Audio Recording Setup</div>
-                <button class="modal-close" onclick="document.getElementById('recordModal').classList.add('hidden')">×</button>
-            </div>
-            <p style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 14px;">
-                Configure capture resolution, framerate, audio input devices, and camera overlay before recording.
-            </p>
-
-            <!-- Live Pre-Recording Setup Preview -->
-            <div id="recSetupPreviewWrapper" style="margin-bottom: 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-size: 11px; font-weight: 600; color: #94a3b8;">LIVE SETUP PREVIEW (FULL RECORDING SCENE)</span>
-                    <button type="button" class="btn btn-secondary" id="btnToggleRecSetupPreview" style="font-size: 10px; padding: 2px 8px;">
-                        <span>📹</span> Test Camera Feed
-                    </button>
-                </div>
-                <div id="recSetupPreviewContainer" style="width: 100%; height: 180px; background: #0b0c10; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; cursor: default;">
-                    <canvas id="recSetupPreviewCanvas" width="640" height="360" style="width: 100%; height: 100%; object-fit: contain; border-radius: 4px; display: block;"></canvas>
-                    <video id="recSetupVideoHidden" autoplay muted playsinline style="display: none;"></video>
-                    <div id="recSetupPlaceholder" style="position: absolute; bottom: 6px; left: 8px; background: rgba(0,0,0,0.7); padding: 2px 8px; border-radius: 4px; font-size: 9.5px; color: #94a3b8; pointer-events: none;">
-                        <span>💡 Drag webcam overlay to reposition • Scroll wheel or slider to resize</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <label class="control-label">Capture Resolution & Framerate</label>
-                <select class="control-input" id="recResolution">
-                    <option value="3840x2160">4K Ultra HD (3840 × 2160, 60 FPS)</option>
-                    <option value="1920x1080" selected>1080p Full HD (1920 × 1080, 60 FPS) [Recommended]</option>
-                    <option value="1920x1080_30">1080p Full HD (1920 × 1080, 30 FPS)</option>
-                    <option value="1280x720">720p HD (1280 × 720, 60 FPS)</option>
-                    <option value="1080x1920">Mobile Vertical (1080 × 1920, 60 FPS Shorts/Reels)</option>
-                    <option value="native">Native Screen Resolution (Display Default)</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label class="control-label">Microphone / Audio Input Device</label>
-                <select class="control-input" id="recAudioDevice">
-                    <option value="default">Default System Microphone</option>
-                </select>
-            </div>
-
-            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px;">
-                <label style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #fff; cursor: pointer;">
-                    <input type="checkbox" id="recMicToggle" checked>
-                    <span>🎙️ Include Microphone Commentary</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #fff; cursor: pointer;">
-                    <input type="checkbox" id="recSystemAudioToggle" checked>
-                    <span>🔊 Capture System & Tab Audio (Videos, Games, Apps)</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #fff; cursor: pointer;">
-                    <input type="checkbox" id="recCursorToggle" checked>
-                    <span>🖱️ Record Cursor Telemetry (Positions, Clicks, Ripples)</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #fff; cursor: pointer;">
-                    <input type="checkbox" id="recCameraToggle">
-                    <span>📷 Picture-in-Picture Webcam Feed</span>
-                </label>
-                <div id="groupRecCameraSelect" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.12);">
-                    <div class="control-group" style="margin-bottom: 8px;">
-                        <label class="control-label" style="font-size: 11px;">Webcam Video Input Source</label>
-                        <select class="control-input" id="recCameraDevice" style="font-size: 11px;">
-                            <option value="default">Default Webcam / Video Source</option>
-                        </select>
-                    </div>
-
-                    <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(56,189,248,0.2); border-radius: 6px; padding: 10px; margin-top: 6px;">
-                        <div style="font-size: 11px; font-weight: bold; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; gap: 5px;">
-                            <span>🎭</span> Webcam Overlay Effects & Geometry
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                            <div>
-                                <label style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 2px;">Mask Shape</label>
-                                <select class="control-input" id="selWebcamShape" style="font-size: 11px; padding: 4px 6px;">
-                                    <option value="circle" selected>Circle (Avatar)</option>
-                                    <option value="square">Squircle / Rounded Square</option>
-                                    <option value="polygon">Polygon (Hexagon)</option>
-                                    <option value="diamond">Diamond (Rotated)</option>
-                                    <option value="oval">Oval / Pill</option>
-                                    <option value="rect">Full Rectangle</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 2px;">Overlay Position</label>
-                                <select class="control-input" id="selWebcamPosition" style="font-size: 11px; padding: 4px 6px;">
-                                    <option value="bottom-right" selected>Bottom-Right Corner</option>
-                                    <option value="bottom-left">Bottom-Left Corner</option>
-                                    <option value="top-right">Top-Right Corner</option>
-                                    <option value="top-left">Top-Left Corner</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                            <div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                                    <label style="font-size: 10px; color: var(--text-secondary); margin: 0;">Scale / Size</label>
-                                    <span id="lblWebcamSize" style="font-family: monospace; font-size: 11px; font-weight: bold; color: #38bdf8;">22%</span>
-                                </div>
-                                <input type="range" class="control-input" id="rngWebcamSize" min="8" max="75" value="22" step="1" style="height: 22px;">
-                                <div style="display: flex; gap: 4px; margin-top: 4px;">
-                                    <button type="button" class="btn btn-secondary btn-rec-size-preset" data-size="14" style="flex: 1; padding: 1px 0; font-size: 9px;">14%</button>
-                                    <button type="button" class="btn btn-secondary btn-rec-size-preset" data-size="22" style="flex: 1; padding: 1px 0; font-size: 9px;">22%</button>
-                                    <button type="button" class="btn btn-secondary btn-rec-size-preset" data-size="35" style="flex: 1; padding: 1px 0; font-size: 9px;">35%</button>
-                                    <button type="button" class="btn btn-secondary btn-rec-size-preset" data-size="50" style="flex: 1; padding: 1px 0; font-size: 9px;">50%</button>
-                                </div>
-                            </div>
-                            <div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                                    <label style="font-size: 10px; color: var(--text-secondary); margin: 0;">Border Width</label>
-                                    <span id="lblWebcamBorder" style="font-family: monospace; font-size: 11px; font-weight: bold; color: #38bdf8;">3px</span>
-                                </div>
-                                <input type="range" class="control-input" id="rngWebcamBorder" min="0" max="16" value="3" style="height: 22px;">
-                                <div style="display: flex; gap: 4px; margin-top: 4px;">
-                                    <button type="button" class="btn btn-secondary btn-rec-border-preset" data-border="0" style="flex: 1; padding: 1px 0; font-size: 9px;">None</button>
-                                    <button type="button" class="btn btn-secondary btn-rec-border-preset" data-border="2" style="flex: 1; padding: 1px 0; font-size: 9px;">2px</button>
-                                    <button type="button" class="btn btn-secondary btn-rec-border-preset" data-border="4" style="flex: 1; padding: 1px 0; font-size: 9px;">4px</button>
-                                    <button type="button" class="btn btn-secondary btn-rec-border-preset" data-border="8" style="flex: 1; padding: 1px 0; font-size: 9px;">8px</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 6px;">
-                            <div style="flex: 1; display: flex; align-items: center; gap: 6px;">
-                                <label style="font-size: 10px; color: var(--text-secondary);">Border Color:</label>
-                                <input type="color" id="colWebcamBorder" value="#38bdf8" style="width: 26px; height: 24px; padding: 0; border: none; background: transparent; cursor: pointer;">
-                            </div>
-                            <label style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #fff; cursor: pointer;">
-                                <input type="checkbox" id="chkWebcamShadow" checked>
-                                <span>Soft Drop Shadow</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #fff; cursor: pointer;">
-                                <input type="checkbox" id="chkWebcamMirror" checked>
-                                <span>Mirror Flip</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
-                <button class="btn btn-secondary" onclick="document.getElementById('recordModal').classList.add('hidden')">Cancel</button>
-                <button class="btn btn-danger" id="btnStartCapture" style="padding: 8px 18px; font-weight: 700;">
-                    <span style="font-size: 14px;">⏺</span> Start Recording
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- 2. Multi-Resolution Export Modal -->
     <div class="modal-overlay hidden" id="exportModal">
         <div class="modal-card">
@@ -4611,7 +4490,6 @@
     </div>
 
     <!-- Scripts -->
-    <script src="src/recorder.js"></script>
     <script src="src/timeline.js"></script>
     <script src="src/compositor.js"></script>
     <script src="src/sfx_generator.js"></script>
@@ -4639,13 +4517,109 @@
                 </div>
 
                 <p style="font-size: 11.5px; color: var(--text-secondary); margin: 0 0 16px 0;">
-                    A modern, high-performance video editor engineered for automated content creation, screen recording, kinetic typography, and multi-track studio timeline production.
+                    A modern, high-performance professional video editor engineered for automated content creation, kinetic typography, and multi-track studio timeline production.
                 </p>
 
                 <div style="display: flex; justify-content: center; gap: 10px;">
                     <button class="btn btn-secondary" onclick="window.open('mailto:rengakhiangte@gmail.com')">✉️ Contact Developer</button>
                     <button class="btn btn-primary" onclick="document.getElementById('aboutModal').classList.add('hidden')">Close</button>
                 </div>
+            </div>
+        </div>
+    </div>
+    <!-- Contextual Right-Click Menu on Timeline -->
+    <div id="timelineContextMenu" class="timeline-context-menu hidden">
+        <!-- Clip Context Group -->
+        <div class="context-group" id="ctxGroupClip">
+            <div class="context-menu-item" data-action="split-clip">
+                <span class="ctx-icon">✂</span>
+                <span class="ctx-label">Split Clip at Playhead</span>
+                <span class="ctx-shortcut">Ctrl+B</span>
+            </div>
+            <div class="context-menu-item" data-action="duplicate-clip">
+                <span class="ctx-icon">📋</span>
+                <span class="ctx-label">Duplicate Clip</span>
+                <span class="ctx-shortcut">Ctrl+D</span>
+            </div>
+            <div class="context-menu-item" data-action="ripple-delete-clip">
+                <span class="ctx-icon">⚡</span>
+                <span class="ctx-label">Ripple Delete</span>
+                <span class="ctx-shortcut">Shift+Del</span>
+            </div>
+            <div class="context-menu-item" data-action="delete-clip" style="color: #ef4444;">
+                <span class="ctx-icon">🗑️</span>
+                <span class="ctx-label">Delete Clip</span>
+                <span class="ctx-shortcut">Del</span>
+            </div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" data-action="separate-audio" id="ctxItemSeparateAudio">
+                <span class="ctx-icon">🎵</span>
+                <span class="ctx-label">Separate Audio to New Track</span>
+            </div>
+            <div class="context-menu-item" data-action="mute-clip" id="ctxItemMuteClip">
+                <span class="ctx-icon">🔇</span>
+                <span class="ctx-label">Mute / Unmute Clip</span>
+            </div>
+            <div class="context-menu-item" data-action="reset-transform" id="ctxItemResetTransform">
+                <span class="ctx-icon">📐</span>
+                <span class="ctx-label">Reset Position & Scale</span>
+            </div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" data-action="inspect-clip">
+                <span class="ctx-icon">🔍</span>
+                <span class="ctx-label">Inspect Properties</span>
+            </div>
+        </div>
+
+        <!-- Track Context Group -->
+        <div class="context-group" id="ctxGroupTrack">
+            <div class="context-menu-item" data-action="add-video-track">
+                <span class="ctx-icon">➕</span>
+                <span class="ctx-label">Add Video / Callout Track</span>
+            </div>
+            <div class="context-menu-item" data-action="add-audio-track">
+                <span class="ctx-icon">🎵</span>
+                <span class="ctx-label">Add Audio Track</span>
+            </div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" data-action="toggle-track-mute" id="ctxItemTrackMute">
+                <span class="ctx-icon">🔇</span>
+                <span class="ctx-label">Mute / Unmute Track</span>
+            </div>
+            <div class="context-menu-item" data-action="toggle-track-lock" id="ctxItemTrackLock">
+                <span class="ctx-icon">🔒</span>
+                <span class="ctx-label">Lock / Unlock Track</span>
+            </div>
+            <div class="context-menu-item" data-action="delete-track" id="ctxItemDeleteTrack" style="color: #ef4444;">
+                <span class="ctx-icon">✕</span>
+                <span class="ctx-label">Delete Track</span>
+            </div>
+        </div>
+
+        <!-- Ruler & General Context Group -->
+        <div class="context-group" id="ctxGroupRuler">
+            <div class="context-menu-item" data-action="playhead-here">
+                <span class="ctx-icon">⏱</span>
+                <span class="ctx-label">Move Playhead Here</span>
+            </div>
+            <div class="context-menu-item" data-action="split-all">
+                <span class="ctx-icon">✂</span>
+                <span class="ctx-label">Split All Tracks at Playhead</span>
+            </div>
+            <div class="context-menu-item" data-action="toggle-snapping">
+                <span class="ctx-icon">🧲</span>
+                <span class="ctx-label">Toggle Timeline Snapping</span>
+            </div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" data-action="zoom-fit">
+                <span class="ctx-icon">↔</span>
+                <span class="ctx-label">Fit Timeline to Window</span>
+                <span class="ctx-shortcut">Shift+Z</span>
+            </div>
+            <div class="context-menu-item" data-action="export-timeline">
+                <span class="ctx-icon">🎬</span>
+                <span class="ctx-label">Export Video...</span>
+                <span class="ctx-shortcut">Ctrl+E</span>
             </div>
         </div>
     </div>

@@ -1,14 +1,120 @@
 /**
  * CLEANROOM IMPLEMENTATION DECLARATION
  * Component: RPA Video Editor - Multi-Resolution Render & Export Engine
- * Specification: SPEC-EDT-003 (Multi-Resolution, Framerates, Format Encoders)
+ * Specification: SPEC-EDT-003 (Multi-Resolution, Framerates, Format Encoders & Audio Synchronization)
  * Authors: Cleanroom Development Team
  * License: Private Cleanroom Software Suite
  */
 
 class RpaExporter {
     /**
-     * Export Timeline with Custom Resolutions, Bitrates & Framerates (Anti-Flicker & Synchronized)
+     * Decode and pre-mix timeline audio into a pristine multi-channel AudioBuffer using OfflineAudioContext.
+     * Accurately supports trimming, volume, playback speed, crossfades, and mute states.
+     */
+    static async mixTimelineAudio(timeline, exportStart, exportEnd, sampleRate = 48000) {
+        const totalDuration = Math.max(0.1, exportEnd - exportStart);
+        const totalSamples = Math.ceil(totalDuration * sampleRate);
+
+        // Find all active audio sources (audio clips + video clips with audio) on unmuted tracks
+        const audioClips = (timeline.clips || []).filter(c => {
+            const track = timeline.getTrack ? timeline.getTrack(c.trackId) : null;
+            if (track && track.muted) return false;
+            if (c.muted) return false;
+            const hasAudio = (c.type === 'audio') || (c.type === 'video' && c.hasAudio !== false);
+            return hasAudio && Boolean(c.sourceUrl);
+        });
+
+        // 1. Fetch & decode all unique audio source files into memory
+        const bufferCache = new Map();
+        if (audioClips.length > 0) {
+            let decodeCtx = null;
+            try {
+                decodeCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+                for (const clip of audioClips) {
+                    if (!bufferCache.has(clip.sourceUrl)) {
+                        try {
+                            const resp = await fetch(clip.sourceUrl);
+                            const ab = await resp.arrayBuffer();
+                            const decoded = await decodeCtx.decodeAudioData(ab.slice(0));
+                            bufferCache.set(clip.sourceUrl, decoded);
+                        } catch (decodeErr) {
+                            console.warn('[RPA Exporter] Could not decode audio data for:', clip.sourceUrl, decodeErr);
+                        }
+                    }
+                }
+            } catch (ctxErr) {
+                console.warn('[RPA Exporter] AudioContext initialization notice:', ctxErr);
+            } finally {
+                if (decodeCtx) {
+                    try { await decodeCtx.close(); } catch (_) {}
+                }
+            }
+        }
+
+        // 2. Mix into OfflineAudioContext
+        const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, totalSamples, sampleRate);
+
+        let activeMixSources = 0;
+        for (const clip of audioClips) {
+            const audioBuf = bufferCache.get(clip.sourceUrl);
+            if (!audioBuf) continue;
+
+            const clipStart = clip.startTime || 0;
+            const clipEnd = clipStart + (clip.duration || 0);
+            const overlapStart = Math.max(clipStart, exportStart);
+            const overlapEnd = Math.min(clipEnd, exportEnd);
+
+            if (overlapEnd > overlapStart) {
+                const when = Math.max(0, overlapStart - exportStart);
+                const clipSpeed = Math.max(0.1, Math.min(10.0, clip.speed || 1.0));
+                const offset = Math.max(0, (clip.trimStart || 0) + (overlapStart - clipStart) * clipSpeed);
+                const dur = overlapEnd - overlapStart;
+
+                try {
+                    const srcNode = offlineCtx.createBufferSource();
+                    srcNode.buffer = audioBuf;
+                    srcNode.playbackRate.value = clipSpeed;
+
+                    const gainNode = offlineCtx.createGain();
+                    const baseVol = Math.max(0, Math.min(1, clip.volume !== undefined ? clip.volume : 1.0));
+                    gainNode.gain.setValueAtTime(baseVol, when);
+
+                    // Fade in volume ramp
+                    if (clip.audioEffects?.fadeIn && clip.audioEffects.fadeIn > 0) {
+                        const fi = clip.audioEffects.fadeIn;
+                        gainNode.gain.setValueAtTime(0, when);
+                        gainNode.gain.linearRampToValueAtTime(baseVol, Math.min(when + dur, when + fi));
+                    }
+
+                    // Fade out volume ramp
+                    if (clip.audioEffects?.fadeOut && clip.audioEffects.fadeOut > 0) {
+                        const fo = clip.audioEffects.fadeOut;
+                        const foStart = Math.max(when, when + dur - fo);
+                        gainNode.gain.setValueAtTime(baseVol, foStart);
+                        gainNode.gain.linearRampToValueAtTime(0, when + dur);
+                    }
+
+                    srcNode.connect(gainNode);
+                    gainNode.connect(offlineCtx.destination);
+                    srcNode.start(when, offset, dur);
+                    activeMixSources++;
+                } catch (mixErr) {
+                    console.warn('[RPA Exporter] Error scheduling audio clip:', clip.id, mixErr);
+                }
+            }
+        }
+
+        try {
+            const renderedBuffer = await offlineCtx.startRendering();
+            return { renderedBuffer, hasAudibleAudio: activeMixSources > 0 };
+        } catch (renderErr) {
+            console.warn('[RPA Exporter] Offline audio rendering failed, fallback to silent buffer:', renderErr);
+            return null;
+        }
+    }
+
+    /**
+     * Export Timeline with Custom Resolutions, Bitrates & Framerates (Anti-Flicker & Synchronized with Pristine Audio)
      */
     static async exportTimeline(timeline, compositor, options = {}, onProgress) {
         const targetWidth = options.width || compositor.projectSettings.width || 1920;
@@ -53,50 +159,59 @@ class RpaExporter {
         exportCompositor.cursorOptions = { ...compositor.cursorOptions };
         exportCompositor.zoom = { ...compositor.zoom };
 
-        // Determine supported MIME type
-        let mimeType = 'video/webm; codecs=vp9,opus';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
-                ? 'video/webm; codecs=vp9'
-                : 'video/webm';
-        }
-        if (format === 'mp4' && MediaRecorder.isTypeSupported('video/mp4')) {
-            mimeType = 'video/mp4';
+        // 1. Pre-mix timeline audio with Web Audio API (Offline Rendering)
+        let audioCtx = null;
+        let audioDest = null;
+        let audioSourceNode = null;
+        const sampleRate = 48000;
+
+        try {
+            const mixResult = await this.mixTimelineAudio(timeline, exportStart, exportEnd, sampleRate);
+            if (mixResult && mixResult.renderedBuffer) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+                if (audioCtx.state === 'suspended') {
+                    await audioCtx.resume();
+                }
+                audioDest = audioCtx.createMediaStreamDestination();
+                audioSourceNode = audioCtx.createBufferSource();
+                audioSourceNode.buffer = mixResult.renderedBuffer;
+                audioSourceNode.connect(audioDest);
+            }
+        } catch (audioPrepErr) {
+            console.warn('[RPA Exporter] Audio pre-mix notice:', audioPrepErr);
         }
 
+        // 2. Determine supported MIME type with audio codecs
+        let mimeType = 'video/webm; codecs=vp9,opus';
+        if (format === 'mp4') {
+            if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1,mp4a.40.2')) {
+                mimeType = 'video/mp4; codecs=avc1,mp4a.40.2';
+            } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                mimeType = 'video/mp4';
+            }
+        }
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+            if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')) {
+                mimeType = 'video/webm; codecs=vp9,opus';
+            } else if (MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')) {
+                mimeType = 'video/webm; codecs=vp8,opus';
+            } else if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) {
+                mimeType = 'video/webm; codecs=vp9';
+            } else {
+                mimeType = 'video/webm';
+            }
+        }
+
+        // 3. Assemble media streams (video + audio)
         const videoStream = exportCanvas.captureStream(fps);
         let finalStream = videoStream;
 
-        // Audio Mixing via Web Audio API
-        let audioCtx = null;
-        let audioDest = null;
-        try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            audioDest = audioCtx.createMediaStreamDestination();
-
-            // Connect any active audio elements from compositor
-            for (const clip of timeline.clips) {
-                if (clip.sourceUrl && (clip.type === 'audio' || (clip.type === 'video' && clip.hasAudio))) {
-                    try {
-                        const el = clip.type === 'video'
-                            ? exportCompositor.getVideoElement(clip.sourceUrl)
-                            : exportCompositor.getAudioElement(clip.sourceUrl);
-                        if (el) {
-                            const sourceNode = audioCtx.createMediaElementSource(el);
-                            sourceNode.connect(audioDest);
-                            sourceNode.connect(audioCtx.destination);
-                        }
-                    } catch (_) {}
-                }
-            }
-
-            if (audioDest.stream.getAudioTracks().length > 0) {
-                finalStream = new MediaStream([
-                    ...videoStream.getVideoTracks(),
-                    ...audioDest.stream.getAudioTracks()
-                ]);
-            }
-        } catch (_) {}
+        if (audioDest && audioDest.stream && audioDest.stream.getAudioTracks().length > 0) {
+            finalStream = new MediaStream([
+                ...videoStream.getVideoTracks(),
+                ...audioDest.stream.getAudioTracks()
+            ]);
+        }
 
         const recorder = new MediaRecorder(finalStream, {
             mimeType,
@@ -131,7 +246,15 @@ class RpaExporter {
                 resolve({ blob, url, width: targetWidth, height: targetHeight, duration: totalExportDuration });
             };
 
+            // Start recorder and synchronized audio stream simultaneously
             recorder.start(100);
+            if (audioSourceNode) {
+                try {
+                    audioSourceNode.start(0);
+                } catch (nodeErr) {
+                    console.warn('[RPA Exporter] Audio start error:', nodeErr);
+                }
+            }
 
             // Synchronous Frame Seeking to Eliminate Black/Flashing Frames
             const seekAllActiveVideos = async (time) => {
@@ -168,10 +291,13 @@ class RpaExporter {
             };
 
             const runRenderLoop = async () => {
-                let currentTime = exportStart;
-                const dt = 1 / fps;
+                const renderStartTime = performance.now();
+                const totalFrames = Math.ceil(totalExportDuration * fps);
 
-                while (currentTime <= exportEnd + 0.0001) {
+                for (let f = 0; f <= totalFrames; f++) {
+                    const currentTime = exportStart + (f / fps);
+                    if (currentTime > exportEnd + 0.0001) break;
+
                     // 1. Wait for video decoders to stabilize at current timestamp
                     await seekAllActiveVideos(currentTime);
 
@@ -186,9 +312,10 @@ class RpaExporter {
                         onProgress(Math.min(100, (elapsed / totalExportDuration) * 100));
                     }
 
-                    currentTime += dt;
-                    // Yield slightly for MediaRecorder chunk dispatch
-                    await new Promise(r => setTimeout(r, Math.max(8, Math.floor(frameInterval * 0.65))));
+                    // Strict wall-clock pacing to synchronize canvas stream with real-time Web Audio
+                    const targetWallTime = renderStartTime + ((f + 1) * frameInterval);
+                    const delay = Math.max(4, Math.floor(targetWallTime - performance.now()));
+                    await new Promise(r => setTimeout(r, delay));
                 }
 
                 // Final safety flush before stop
@@ -198,6 +325,9 @@ class RpaExporter {
 
             runRenderLoop().catch(err => {
                 console.error('[RPA Exporter] Render error:', err);
+                if (audioCtx) {
+                    try { audioCtx.close(); } catch (_) {}
+                }
                 reject(err);
             });
         });

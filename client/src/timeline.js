@@ -410,6 +410,41 @@ class RpaTimeline {
         this.saveSnapshot();
     }
 
+    rippleRemoveClip(id) {
+        const clip = this.getClip(id);
+        if (!clip) return;
+        const clipEnd = clip.startTime + clip.duration;
+        const dur = clip.duration;
+        const trackId = clip.trackId;
+
+        this.removeClip(id);
+
+        // Pull subsequent clips on the track backwards by dur (closing the gap)
+        const subsequent = this.clips
+            .filter(c => c.trackId === trackId && c.startTime >= (clipEnd - 0.05))
+            .sort((a, b) => a.startTime - b.startTime);
+
+        for (const sub of subsequent) {
+            sub.startTime = Math.max(0, sub.startTime - dur);
+        }
+        this.updateTotalDuration();
+        this.saveSnapshot();
+    }
+
+    duplicateClip(id) {
+        const orig = this.getClip(id);
+        if (!orig) return null;
+        const { id: _, ...clipData } = JSON.parse(JSON.stringify(orig));
+        clipData.startTime = orig.startTime + orig.duration;
+        clipData.title = `${orig.title} (Copy)`;
+        const added = this.addClip(clipData);
+        if (added) {
+            this.selectedClipId = added.id;
+            this.saveSnapshot();
+        }
+        return added;
+    }
+
     separateAudioAndVideo(clipId) {
         const videoClip = this.getClip(clipId);
         if (!videoClip || videoClip.type !== 'video') {
@@ -764,6 +799,16 @@ class RpaTimeline {
             trackEl.dataset.trackId = track.id;
             if (track.locked) trackEl.classList.add('track-locked');
 
+            // Context-Aware Right-Click Menu on Track
+            trackEl.oncontextmenu = (e) => {
+                if (e.target.closest('.timeline-clip')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.rpaStudio && window.rpaStudio.showTimelineContextMenu) {
+                    window.rpaStudio.showTimelineContextMenu(e, 'track', track);
+                }
+            };
+
             // 1. Interactive Track Header with Controls
             const headerEl = document.createElement('div');
             headerEl.className = 'track-header';
@@ -990,6 +1035,17 @@ class RpaTimeline {
                     }
                 };
 
+                // Context-Aware Right-Click Menu on Clip
+                clipEl.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.selectedClipId = clip.id;
+                    onClipSelected(clip);
+                    if (window.rpaStudio && window.rpaStudio.showTimelineContextMenu) {
+                        window.rpaStudio.showTimelineContextMenu(e, 'clip', clip);
+                    }
+                };
+
                 // Dragging clip, trimming left/right, or adjusting transitions/keyframes
                 const onClipDragStart = (e) => {
                     if (track.locked) return;
@@ -999,15 +1055,17 @@ class RpaTimeline {
                     let action = actionTarget ? actionTarget.dataset.action : null;
                     let targetEl = actionTarget || e.target;
 
-                    // Edge Trim Priority: Clicking within 18px of clip borders always pulls clip duration (unblocked by transitions)
+                    // Edge Trim Priority: Clicking within 6px of clip borders activates trim handles directly from edges (unblocking effect edits)
                     const clipRect = clipEl.getBoundingClientRect();
                     const clickRelX = e.clientX - clipRect.left;
-                    if (clickRelX <= 18 && action !== 'del-trans-in' && action !== 'del-intermediate-trans') {
-                        action = 'trim-left';
-                        targetEl = clipEl.querySelector('.clip-handle-left') || clipEl;
-                    } else if ((clipRect.width - clickRelX) <= 18 && action !== 'del-trans-out' && action !== 'del-intermediate-trans') {
-                        action = 'trim-right';
-                        targetEl = clipEl.querySelector('.clip-handle-right') || clipEl;
+                    if (!action || action === 'trim-left' || action === 'trim-right') {
+                        if (clickRelX <= 6) {
+                            action = 'trim-left';
+                            targetEl = clipEl.querySelector('.clip-handle-left') || clipEl;
+                        } else if ((clipRect.width - clickRelX) <= 6) {
+                            action = 'trim-right';
+                            targetEl = clipEl.querySelector('.clip-handle-right') || clipEl;
+                        }
                     }
 
                     // A. Instant Delete Actions right on timeline
@@ -1372,8 +1430,27 @@ class RpaTimeline {
                             let candidateEnd = origStart + origDur + deltaSec;
                             const snap = this.findSnapPoint(candidateEnd, clip.id);
                             if (snap.snapped) candidateEnd = snap.time;
-                            candidateEnd = this.clampTrimRight(clip.id, clip.trackId, clip.startTime, candidateEnd);
-                            clip.duration = Math.max(0.2, candidateEnd - clip.startTime);
+
+                            // Push/Pull ripple editing: when expanding rightward into adjacent clips, push them forward
+                            const newDur = Math.max(0.2, candidateEnd - clip.startTime);
+                            const oldEnd = clip.startTime + clip.duration;
+                            const targetEnd = clip.startTime + newDur;
+                            const pushDelta = targetEnd - oldEnd;
+
+                            if (pushDelta > 0.001) {
+                                const subsequentClips = this.clips
+                                    .filter(c => c.id !== clip.id && c.trackId === clip.trackId && c.startTime >= (oldEnd - 0.05))
+                                    .sort((a, b) => a.startTime - b.startTime);
+                                for (const subClip of subsequentClips) {
+                                    if (targetEnd > subClip.startTime) {
+                                        const shift = targetEnd - subClip.startTime;
+                                        subClip.startTime += shift;
+                                        const subEl = document.querySelector(`.timeline-clip[data-clip-id="${subClip.id}"]`);
+                                        if (subEl) subEl.style.left = `${subClip.startTime * this.pixelsPerSecond}px`;
+                                    }
+                                }
+                            }
+                            clip.duration = newDur;
                             if (clip.transitionInDuration > clip.duration * 0.48) clip.transitionInDuration = clip.duration * 0.48;
                             if (clip.transitionOutDuration > clip.duration * 0.48) clip.transitionOutDuration = clip.duration * 0.48;
                             if (window.rpaStudio) {
@@ -1393,7 +1470,23 @@ class RpaTimeline {
                                 candidateStart = Math.max(0, snapEnd.time - origDur);
                             }
 
-                            clip.startTime = this.clampClipPosition(clip.id, clip.trackId, candidateStart, origDur, origStart);
+                            // Push/Pull behavior on clip drag:
+                            const myTargetEnd = candidateStart + origDur;
+                            if (candidateStart > origStart) {
+                                const subsequentClips = this.clips
+                                    .filter(c => c.id !== clip.id && c.trackId === clip.trackId && c.startTime >= (origStart + origDur - 0.05))
+                                    .sort((a, b) => a.startTime - b.startTime);
+                                for (const subClip of subsequentClips) {
+                                    if (myTargetEnd > subClip.startTime) {
+                                        const shift = myTargetEnd - subClip.startTime;
+                                        subClip.startTime += shift;
+                                        const subEl = document.querySelector(`.timeline-clip[data-clip-id="${subClip.id}"]`);
+                                        if (subEl) subEl.style.left = `${subClip.startTime * this.pixelsPerSecond}px`;
+                                    }
+                                }
+                            }
+
+                            clip.startTime = candidateStart;
                             if (window.rpaStudio) {
                                 const pStart = document.getElementById('propStart');
                                 if (pStart) pStart.value = clip.startTime.toFixed(1);
