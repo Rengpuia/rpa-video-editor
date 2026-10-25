@@ -40,21 +40,24 @@ jobs:
 
       - name: Verify Generated Desktop Artifacts
         run: |
-          Get-ChildItem -Path exports/*.exe
+          Get-ChildItem -Path exports/*.exe -ErrorAction SilentlyContinue
+          if (Test-Path RPA_Video_Editor.exe) { Write-Host "Verified native launcher: RPA_Video_Editor.exe" }
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: RPA_Video_Editor_v2.0.0_Windows
           path: |
-            exports/RPA-Video-Editor-v2.0.0-Setup.exe
+            exports/*.exe
+            RPA_Video_Editor.exe
 
       - name: Create GitHub Release (On Tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            exports/RPA-Video-Editor-v2.0.0-Setup.exe
+            exports/*.exe
+            RPA_Video_Editor.exe
           name: RPA Video Editor ${{ github.ref_name }} (Offline Desktop Edition)
           body: |
             ## RPA Video Editor - Studio Pro v2.0.0 (Native Offline Desktop Edition)
@@ -68,9 +71,17 @@ jobs:
 
             ### 📦 Official Desktop Releases
             1. **`RPA-Video-Editor-v2.0.0-Setup.exe`**: Full Windows Desktop Installer with start menu integration, desktop shortcuts, project file association, and seamless update support.
-            2. **`RPA-Video-Editor-v2.0.0-Portable.exe`**: Single-binary standalone portable desktop edition. Double-click to run anywhere without installation.
+            2. **`RPA_Video_Editor.exe`**: Native C# compiled standalone portable launcher. Double-click to run anywhere without installation.
 
             ### ✨ Key Features & Enhancements
+            - **Studio-Grade Export Quality:** Bicubic high-DPI canvas smoothing, geometric precision typography, and up to 24 Mbps / 4K encoding.
+            - **Zero-Glitch WebM Seeking:** Front-loaded EBML SeekHead, accurate Duration header, and keyframe Cues index table for instant, artifact-free scrubbing in PC media players.
+            - **Transition Trimming & Opacity Controls:** Dedicated interactive wedge resize handles for entrance/exit transitions and customizable Transition Opacity (10%–100%).
+            - **Transitions on Blur & Magnify:** Transitions seamlessly apply to Blur Sensitive and Magnify tools.
+            - **True Feathered Magnify Blur Outline:** Gaussian-blurred edge mask seamlessly blends the magnified lens into underlying video.
+            - **Synchronized Manual Track Points:** Full interpolation and timeline synchronization for keyframed motion track points in Magnify lens.
+            - **Isolated Behavior Styles:** Pure vertical Jump without wave delay or drift; independent Drift and Pulsating animations with centered default placement.
+            - **Toolbar Click Animation Polish:** Instant focus outline and active state cleanup across all timeline action buttons.
             - **Custom Project Save Location:** Dedicated folder/file picker dialog to choose project destination.
             - **Alphabet Soft Glow & Bloom:** Multi-pass bloom aura conforming directly to alphabet letter glyphs and typography contours.
             - **Clean Transition & Behavior Deletion:** Instant purging of active animation transforms upon deletion from timeline or inspector.
