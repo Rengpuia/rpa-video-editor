@@ -74,13 +74,14 @@ jobs:
             2. **`RPA_Video_Editor.exe`**: Native C# compiled standalone portable launcher. Double-click to run anywhere without installation.
 
             ### ✨ Key Features & Enhancements
-            - **Studio-Grade Export Quality:** Bicubic high-DPI canvas smoothing, geometric precision typography, and up to 24 Mbps / 4K encoding.
-            - **Zero-Glitch WebM Seeking:** Front-loaded EBML SeekHead, accurate Duration header, and keyframe Cues index table for instant, artifact-free scrubbing in PC media players.
+            - **Studio-Grade Export Quality:** Bicubic high-DPI canvas smoothing, geometric precision typography, and up to 48 Mbps / 4K encoding (20 Mbps recommended default).
+            - **Zero-Glitch WebM Seeking:** 64-bit safe EBML writeVint, front-loaded SeekHead, accurate Duration header, and video track keyframe Cues index table for instant, artifact-free scrubbing in external PC media players.
             - **Transition Trimming & Opacity Controls:** Dedicated interactive wedge resize handles for entrance/exit transitions and customizable Transition Opacity (10%–100%).
-            - **Transitions on Blur & Magnify:** Transitions seamlessly apply to Blur Sensitive and Magnify tools.
-            - **True Feathered Magnify Blur Outline:** Gaussian-blurred edge mask seamlessly blends the magnified lens into underlying video.
-            - **Synchronized Manual Track Points:** Full interpolation and timeline synchronization for keyframed motion track points in Magnify lens.
-            - **Isolated Behavior Styles:** Pure vertical Jump without wave delay or drift; independent Drift and Pulsating animations with centered default placement.
+            - **Transitions on Blur & Magnify:** Transitions seamlessly apply to Blur Sensitive and Magnify tools without player freezing.
+            - **True Feathered Magnify Blur Outline:** Gaussian-blurred edge mask with outer bleed margin seamlessly blends the magnified lens into underlying video.
+            - **Synchronized Manual Track Points:** Full interpolation and timeline synchronization for keyframed motion track points in Magnify lens with one-click Record Point @ Current Time.
+            - **Vector-Property Keyframing & Animation Arrows:** Vector property interpolation (position X/Y, scale, rotation, opacity) with visual timeline arrows, easing, Jump Tail/Head and Set Start/End State.
+            - **Isolated Behavior Styles:** IN, DURING (None/Still, Pulsate, Jitter/Shake, Drift, Jump, Swing), and OUT styles operate completely independently without unwanted wave ripple or drift mixing; centered default placement.
             - **Toolbar Click Animation Polish:** Instant focus outline and active state cleanup across all timeline action buttons.
             - **Custom Project Save Location:** Dedicated folder/file picker dialog to choose project destination.
             - **Alphabet Soft Glow & Bloom:** Multi-pass bloom aura conforming directly to alphabet letter glyphs and typography contours.

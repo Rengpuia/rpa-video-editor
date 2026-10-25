@@ -3190,6 +3190,12 @@
                                     <span id="lblMagBlurOutline" style="font-size: 10px; font-weight: 700; color: #38bdf8;">0px</span>
                                 </div>
                                 <input type="range" class="control-range" id="propMagBlurOutline" min="0" max="40" step="1" value="0">
+                                <div style="display: flex; gap: 4px; margin-top: 5px;">
+                                    <button type="button" class="btn btn-secondary btn-mag-blur-preset" data-blur="0" style="flex: 1; font-size: 8.5px; padding: 2px 4px;" title="Crisp sharp edge">Crisp (0px)</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-blur-preset" data-blur="8" style="flex: 1; font-size: 8.5px; padding: 2px 4px;" title="Soft feathered edge">Soft (8px)</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-blur-preset" data-blur="18" style="flex: 1; font-size: 8.5px; padding: 2px 4px;" title="Medium feather blur">Medium (18px)</button>
+                                    <button type="button" class="btn btn-secondary btn-mag-blur-preset" data-blur="30" style="flex: 1; font-size: 8.5px; padding: 2px 4px;" title="Heavy feather blur">Heavy (30px)</button>
+                                </div>
                             </div>
                         </div>
 
@@ -3246,7 +3252,10 @@
                                         <input type="number" class="control-input" id="numMagTrackY" min="0" max="100" step="1" value="50" style="text-align: center; height: 24px; font-size: 11px;">
                                     </div>
                                 </div>
-                                <div style="display: flex; gap: 6px; margin-top: 8px;">
+                                <button type="button" class="btn btn-primary" id="btnRecordMagTrackPoint" style="width: 100%; margin-top: 8px; font-size: 10.5px; padding: 6px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; border: none; border-radius: 4px; display: flex; align-items: center; justify-content: center; gap: 6px;" title="Record current magnifier location at the exact timeline time">
+                                    <span>📍 Record Point @ Current Time (<span id="lblMagRecordTime">00:00.0</span>)</span>
+                                </button>
+                                <div style="display: flex; gap: 6px; margin-top: 6px;">
                                     <button type="button" class="btn btn-secondary" id="btnAddMagTrackKeyframe" style="flex: 1; font-size: 9.5px; padding: 4px;" title="Save current position as track keyframe at playhead">➕ Keyframe</button>
                                     <button type="button" class="btn btn-secondary" id="btnUndoMagTrack" style="font-size: 9.5px; padding: 4px 8px;" title="Undo track point change">↺ Undo</button>
                                     <button type="button" class="btn btn-secondary" id="btnRestoreMagTrack" style="font-size: 9.5px; padding: 4px 8px; color: #f87171;" title="Reset track points back to center and remove keyframes">↺ Restore</button>
@@ -3516,12 +3525,13 @@
                                     <label class="studio-label">Style</label>
                                     <div class="studio-field">
                                         <select class="studio-select" id="selBehaviorInStyle">
-                                            <option value="bounce">Bounce In</option>
-                                            <option value="slide">Slide In</option>
-                                            <option value="pop">Pop In</option>
                                             <option value="fade">Fade In</option>
-                                            <option value="scale">Scale In</option>
+                                            <option value="pop">Pop / Scale</option>
+                                            <option value="slide">Slide In</option>
+                                            <option value="rise">Rise In (From Bottom)</option>
+                                            <option value="bounce">Bounce In</option>
                                             <option value="drop">Drop In</option>
+                                            <option value="scale">Scale In</option>
                                             <option value="drift">Drift In</option>
                                             <option value="none">None</option>
                                         </select>
@@ -3598,13 +3608,14 @@
                                     <label class="studio-label">Style</label>
                                     <div class="studio-field">
                                         <select class="studio-select" id="selBehaviorDuringStyle">
-                                            <option value="jump">Jump</option>
-                                            <option value="drift">Drift</option>
-                                            <option value="pulsating">Pulsating</option>
-                                            <option value="dancing-wave">Dancing Wave</option>
-                                            <option value="wobble">Wobble</option>
+                                            <option value="none">None (Still)</option>
+                                            <option value="pulsating">Pulsate (Breathing)</option>
+                                            <option value="jitter">Jitter (Shake)</option>
+                                            <option value="drift">Drift (Slow Move)</option>
+                                            <option value="jump">Jump (Hop)</option>
                                             <option value="swing">Swing</option>
-                                            <option value="none">None</option>
+                                            <option value="wobble">Wobble</option>
+                                            <option value="dancing-wave">Dancing Wave</option>
                                         </select>
                                     </div>
                                 </div>
@@ -3688,10 +3699,10 @@
                                     <label class="studio-label">Style</label>
                                     <div class="studio-field">
                                         <select class="studio-select" id="selBehaviorOutStyle">
-                                            <option value="drop">Drop</option>
-                                            <option value="slide">Slide</option>
-                                            <option value="fade">Fade</option>
-                                            <option value="shrink">Shrink</option>
+                                            <option value="fade">Fade Out</option>
+                                            <option value="shrink">Pop / Scale Down (Shrink)</option>
+                                            <option value="slide">Slide Out</option>
+                                            <option value="drop">Drop (Falls Down)</option>
                                             <option value="bounce">Bounce Out</option>
                                             <option value="none">None</option>
                                         </select>
@@ -3792,6 +3803,22 @@
                             </button>
                             <button type="button" class="btn btn-secondary" id="btnRestoreFullCanvasInspector" style="font-size: 10px; padding: 6px;" title="Create smooth animation arrow returning to full canvas 100%">
                                 ⟲ Restore (100%)
+                            </button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px;">
+                            <button type="button" class="btn btn-secondary" id="btnAnimJumpTail" style="font-size: 9.5px; padding: 4px;" title="Jump playhead to arrow start keyframe (Tail)">
+                                ◀ Jump Tail
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="btnAnimJumpHead" style="font-size: 9.5px; padding: 4px;" title="Jump playhead to arrow end keyframe (Head)">
+                                Jump Head ▶
+                            </button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px;">
+                            <button type="button" class="btn btn-secondary" id="btnAnimRecordStart" style="font-size: 9.5px; padding: 4px;" title="Record current canvas transform into Arrow Start State (Tail)">
+                                📍 Set Start State
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="btnAnimRecordEnd" style="font-size: 9.5px; padding: 4px;" title="Record current canvas transform into Arrow End State (Head)">
+                                🎯 Set End State
                             </button>
                         </div>
                         <div id="inspectorKeyframeBadges" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;"></div>
@@ -4252,19 +4279,18 @@
             <div class="control-group">
                 <label class="control-label" style="display: flex; justify-content: space-between;">
                     <span>Encoding Quality & Bitrate</span>
-                    <span id="lblExportBitrateDisplay" style="font-size: 10.5px; color: #38bdf8; font-family: monospace;">16.0 Mbps</span>
+                    <span id="lblExportBitrateDisplay" style="font-size: 10.5px; color: #38bdf8; font-family: monospace;">20.0 Mbps</span>
                 </label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
                     <select class="control-input" id="selExportBitratePreset">
-                        <option value="24000000">Master / 4K (24 Mbps)</option>
-                        <option value="16000000" selected>Ultra High (16 Mbps) [Recommended Studio Quality]</option>
-                        <option value="12000000">High Quality (12 Mbps)</option>
-                        <option value="8000000">Standard Studio (8 Mbps)</option>
-                        <option value="5000000">Balanced (5 Mbps)</option>
-                        <option value="2500000">Compact / Web (2.5 Mbps)</option>
+                        <option value="48000000">Cinema 4K Master (48 Mbps) [Razor Sharp Text & Effects]</option>
+                        <option value="32000000">Ultra Crisp Pro (32 Mbps) [Crystal Clear Text & Graphics]</option>
+                        <option value="20000000" selected>Studio High Definition (20 Mbps) [Recommended]</option>
+                        <option value="12000000">Standard HD (12 Mbps)</option>
+                        <option value="6000000">Compact / Web (6 Mbps)</option>
                         <option value="custom">⚙️ Custom Bitrate...</option>
                     </select>
-                    <input type="number" class="control-input" id="numExportCustomBitrate" value="16" min="1" max="100" step="0.5" placeholder="Mbps" style="font-family: monospace; display: none;">
+                    <input type="number" class="control-input" id="numExportCustomBitrate" value="20" min="1" max="100" step="0.5" placeholder="Mbps" style="font-family: monospace; display: none;">
                 </div>
             </div>
             <div class="control-group">

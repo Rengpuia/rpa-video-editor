@@ -46,7 +46,10 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    transition: all 0.15s ease;
+    transition: background-color 0.1s ease, color 0.1s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
 }
 .tool-btn:hover {
     background-color: var(--bg-panel-hover);
@@ -61,6 +64,8 @@
 .tool-btn:active {
     outline: none !important;
     box-shadow: none !important;
+    transform: none !important;
+    animation: none !important;
 }
 .tool-btn-danger:hover {
     background-color: var(--danger-color);
@@ -303,12 +308,13 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 8px;
-    z-index: 50;
+    width: 14px;
+    z-index: 100;
     background: transparent;
     cursor: ew-resize;
     display: block;
     transition: background 0.15s ease, border 0.15s ease;
+    pointer-events: auto;
 }
 .clip-handle-left { 
     left: 0; 
@@ -566,11 +572,12 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 8px;
+    width: 16px;
     cursor: ew-resize;
-    z-index: 35;
+    z-index: 45;
     background: transparent;
     transition: background 0.15s ease, box-shadow 0.15s ease;
+    pointer-events: auto;
 }
 .wedge-resize-handle:hover,
 .wedge-resize-handle.active {

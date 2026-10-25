@@ -428,13 +428,15 @@ class RpaCompositor {
 
             // 3. Calculate Keyframes & Bezier Curves
             const kf = this.computeKeyframes(clip, relTime);
+            const hasAnim = Array.isArray(clip.animations) && clip.animations.length > 0;
 
             // Apply Transforms: Translation, Scale, Rotation, Opacity
+            const baseOp = hasAnim ? (kf.opacity !== undefined ? kf.opacity : 1.0) : ((clip.opacity !== undefined ? clip.opacity : 1.0) * (kf.opacity !== undefined ? kf.opacity : 1.0));
             if (clip.type === 'callout') {
                 const bAlpha = behaviorTransform.opacity !== undefined ? behaviorTransform.opacity : 1.0;
-                this.ctx.globalAlpha = (clip.opacity !== undefined ? clip.opacity : 1.0) * transitionAlpha * bAlpha * kf.opacity;
+                this.ctx.globalAlpha = Math.max(0, Math.min(1.0, baseOp * transitionAlpha * bAlpha));
             } else {
-                this.ctx.globalAlpha = (clip.opacity !== undefined ? clip.opacity : 1.0) * transitionAlpha * behaviorTransform.opacity * kf.opacity;
+                this.ctx.globalAlpha = Math.max(0, Math.min(1.0, baseOp * transitionAlpha * (behaviorTransform.opacity !== undefined ? behaviorTransform.opacity : 1.0)));
             }
 
             // Apply Filters (Brightness, Contrast, Saturation)
@@ -482,16 +484,18 @@ class RpaCompositor {
 
             if (clip.type === 'callout') {
                 const b = this.getCalloutBounds(clip, width, height);
-                const baseScaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
-                const baseScaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
+                const baseScaleX = hasAnim ? (kf.scaleX * kf.scale) : (clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0));
+                const baseScaleY = hasAnim ? (kf.scaleY * kf.scale) : (clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0));
                 const bScale = behaviorTransform.scale !== undefined ? behaviorTransform.scale : 1.0;
                 const tScale = transitionTransform.scale !== undefined ? transitionTransform.scale : 1.0;
-                const sX = baseScaleX * (kf.scaleX || kf.scale || 1.0) * bScale * tScale;
-                const sY = baseScaleY * (kf.scaleY || kf.scale || 1.0) * bScale * tScale;
+                const sX = baseScaleX * bScale * tScale;
+                const sY = baseScaleY * bScale * tScale;
                 drawW = b.bw * sX;
                 drawH = b.bh * sY;
-                drawX = b.bx + (b.bw - drawW) / 2 + (behaviorTransform.x || 0) + (transitionTransform.x || 0) + kf.x;
-                drawY = b.by + (b.bh - drawH) / 2 + (behaviorTransform.y || 0) + (transitionTransform.y || 0) + kf.y;
+                const activeCalloutX = hasAnim ? kf.x : (clip.xOffset || 0);
+                const activeCalloutY = hasAnim ? kf.y : (clip.yOffset || 0);
+                drawX = b.bx + (b.bw - drawW) / 2 + (behaviorTransform.x || 0) + (transitionTransform.x || 0) + activeCalloutX;
+                drawY = b.by + (b.bh - drawH) / 2 + (behaviorTransform.y || 0) + (transitionTransform.y || 0) + activeCalloutY;
             } else if (clip.type === 'image') {
                 let imgW = width;
                 let imgH = height;
@@ -521,38 +525,39 @@ class RpaCompositor {
                         }
                     }
                 }
-                let baseScaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
-                let baseScaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
-                let baseOffsetX = clip.xOffset || 0;
-                let baseOffsetY = clip.yOffset || 0;
+                const baseScaleX = hasAnim ? (kf.scaleX * kf.scale) : (clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0));
+                const baseScaleY = hasAnim ? (kf.scaleY * kf.scale) : (clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0));
+                const baseOffsetX = hasAnim ? kf.x : (clip.xOffset || 0);
+                const baseOffsetY = hasAnim ? kf.y : (clip.yOffset || 0);
 
-                const scaleX = baseScaleX * behaviorTransform.scale * transitionTransform.scale * (kf.scaleX || kf.scale || 1.0);
-                const scaleY = baseScaleY * behaviorTransform.scale * transitionTransform.scale * (kf.scaleY || kf.scale || 1.0);
+                const scaleX = baseScaleX * behaviorTransform.scale * transitionTransform.scale;
+                const scaleY = baseScaleY * behaviorTransform.scale * transitionTransform.scale;
 
                 drawW = imgW * scaleX;
                 drawH = imgH * scaleY;
-                drawX = (width - drawW) / 2 + baseOffsetX + behaviorTransform.x + transitionTransform.x + kf.x;
-                drawY = (height - drawH) / 2 + baseOffsetY + behaviorTransform.y + transitionTransform.y + kf.y;
+                drawX = (width - drawW) / 2 + baseOffsetX + behaviorTransform.x + transitionTransform.x;
+                drawY = (height - drawH) / 2 + baseOffsetY + behaviorTransform.y + transitionTransform.y;
             } else {
-                let baseScaleX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
-                let baseScaleY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
-                let baseOffsetX = clip.xOffset || 0;
-                let baseOffsetY = clip.yOffset || 0;
+                const baseScaleX = hasAnim ? (kf.scaleX * kf.scale) : (clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0));
+                const baseScaleY = hasAnim ? (kf.scaleY * kf.scale) : (clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0));
+                const baseOffsetX = hasAnim ? kf.x : (clip.xOffset || 0);
+                const baseOffsetY = hasAnim ? kf.y : (clip.yOffset || 0);
 
-                const scaleX = baseScaleX * behaviorTransform.scale * transitionTransform.scale * (kf.scaleX || kf.scale || 1.0);
-                const scaleY = baseScaleY * behaviorTransform.scale * transitionTransform.scale * (kf.scaleY || kf.scale || 1.0);
+                const scaleX = baseScaleX * behaviorTransform.scale * transitionTransform.scale;
+                const scaleY = baseScaleY * behaviorTransform.scale * transitionTransform.scale;
 
                 drawW = width * scaleX;
                 drawH = height * scaleY;
-                drawX = (width - drawW) / 2 + baseOffsetX + behaviorTransform.x + transitionTransform.x + kf.x;
-                drawY = (height - drawH) / 2 + baseOffsetY + behaviorTransform.y + transitionTransform.y + kf.y;
+                drawX = (width - drawW) / 2 + baseOffsetX + behaviorTransform.x + transitionTransform.x;
+                drawY = (height - drawH) / 2 + baseOffsetY + behaviorTransform.y + transitionTransform.y;
             }
 
             const rotBeh = behaviorTransform.rotation || 0;
             const rotTrans = transitionTransform.rotation || 0;
-            if (clip.rotation || rotBeh || kf.rotation || rotTrans) {
+            const baseRot = hasAnim ? kf.rotation : (clip.rotation || 0);
+            if (baseRot || rotBeh || rotTrans) {
                 this.ctx.translate(drawX + drawW / 2, drawY + drawH / 2);
-                this.ctx.rotate(((clip.rotation || 0) + rotBeh + rotTrans + kf.rotation) * Math.PI / 180);
+                this.ctx.rotate((baseRot + rotBeh + rotTrans) * Math.PI / 180);
                 this.ctx.translate(-(drawX + drawW / 2), -(drawY + drawH / 2));
             }
 
@@ -983,7 +988,7 @@ class RpaCompositor {
         }
     }
 
-    getCalloutBounds(clip, width, height) {
+    getCalloutBounds(clip, width, height, relTime = undefined) {
         const title = (clip.title || '').toLowerCase();
         const subtype = (clip.subtype || '').toLowerCase();
         let bw, bh, bx, by;
@@ -1031,10 +1036,32 @@ class RpaCompositor {
             bx = (width - bw) / 2 + (clip.xOffset || 0);
             by = (height - bh) / 2 + (clip.yOffset || 0);
         } else if (title.includes('magnif') || subtype === 'magnify' || title.includes('loupe') || title.includes('zoom lens')) {
-            bw = clip.width || 360;
-            bh = clip.height || 360;
-            bx = (width - bw) / 2 + (clip.xOffset || 0);
-            by = (height - bh) / 2 + (clip.yOffset || 0);
+            bw = (clip.width !== undefined && clip.width > 0) ? clip.width : 360;
+            bh = (clip.height !== undefined && clip.height > 0) ? clip.height : 360;
+            const rel = (relTime !== undefined) ? relTime : ((this.lastPlayheadTime !== undefined && clip.startTime !== undefined) ? Math.max(0, Math.min(clip.duration || 1, this.lastPlayheadTime - clip.startTime)) : 0);
+            let cx = width * 0.5 + (clip.xOffset || 0);
+            let cy = height * 0.5 + (clip.yOffset || 0);
+            if (clip.trackingMode === 'cursor' && clip.startTime !== undefined) {
+                const curPoint = this.getInterpolatedCursor(clip.startTime + rel);
+                if (curPoint && curPoint.x !== undefined && curPoint.y !== undefined) {
+                    cx = curPoint.x * width + (clip.xOffset || 0);
+                    cy = curPoint.y * height + (clip.yOffset || 0);
+                }
+            } else if (clip.trackingMode === 'motion') {
+                const trackedPos = this.getTrackedMediaMotion(clip, rel, width, height);
+                if (trackedPos) {
+                    cx = trackedPos.x;
+                    cy = trackedPos.y;
+                }
+            } else {
+                const pt = this.getInterpolatedTrackPoint(clip, rel, width, height);
+                if (pt) {
+                    cx = pt.x + (clip.xOffset || 0);
+                    cy = pt.y + (clip.yOffset || 0);
+                }
+            }
+            bx = cx - bw / 2;
+            by = cy - bh / 2;
         } else if (title.includes('highlight') || subtype === 'highlight') {
             bw = clip.width || 440;
             bh = clip.height || 70;
@@ -1065,66 +1092,110 @@ class RpaCompositor {
      * Visual Keyframe Evaluation with Smooth Bezier & Easing Graphs
      */
     computeKeyframes(clip, relTime) {
-        const result = { x: 0, y: 0, scale: 1.0, scaleX: 1.0, scaleY: 1.0, opacity: 1.0, rotation: 0 };
+        const defaultState = {
+            x: clip.xOffset || 0,
+            y: clip.yOffset || 0,
+            scale: clip.scale !== undefined ? clip.scale : 1.0,
+            scaleX: clip.scaleX !== undefined ? clip.scaleX : 1.0,
+            scaleY: clip.scaleY !== undefined ? clip.scaleY : 1.0,
+            opacity: clip.opacity !== undefined ? clip.opacity : 1.0,
+            rotation: clip.rotation || 0
+        };
 
-        // 1. Evaluate Studio Animation Arrows if present
+        // 1. Vector-Property Keyframing & Timeline Arrow Tweening Engine
         if (clip.animations && clip.animations.length > 0) {
             const sortedAnims = [...clip.animations].sort((a, b) => a.timeOffset - b.timeOffset);
-            for (const anim of sortedAnims) {
+
+            // Playhead before first arrow: maintain first arrow's start state
+            if (relTime <= sortedAnims[0].timeOffset) {
+                const s = sortedAnims[0].startState || sortedAnims[0].startProps || {};
+                const res = { ...defaultState };
+                for (const p of Object.keys(res)) {
+                    if (s[p] !== undefined) res[p] = s[p];
+                }
+                return res;
+            }
+
+            // Playhead after last arrow: maintain last arrow's end state
+            const lastAnim = sortedAnims[sortedAnims.length - 1];
+            const lastEnd = lastAnim.timeOffset + lastAnim.duration;
+            if (relTime >= lastEnd) {
+                const e = lastAnim.endState || lastAnim.targetProps || {};
+                const res = { ...defaultState };
+                for (const p of Object.keys(res)) {
+                    if (e[p] !== undefined) res[p] = e[p];
+                }
+                return res;
+            }
+
+            // Check each animation arrow
+            for (let i = 0; i < sortedAnims.length; i++) {
+                const anim = sortedAnims[i];
                 const animEnd = anim.timeOffset + anim.duration;
-                if (relTime < anim.timeOffset) {
-                    continue;
-                } else if (relTime >= animEnd) {
-                    if (anim.targetProps) {
-                        for (const [p, val] of Object.entries(anim.targetProps)) {
-                            result[p] = val;
-                        }
+
+                // Inside arrow: interpolate between start state and end state using easing curve
+                if (relTime >= anim.timeOffset && relTime <= animEnd) {
+                    const span = Math.max(0.001, anim.duration);
+                    let t = Math.max(0, Math.min(1.0, (relTime - anim.timeOffset) / span));
+                    t = this.evaluateEasing(t, anim.easing || 'easeInOut');
+
+                    const s = anim.startState || anim.startProps || {};
+                    const e = anim.endState || anim.targetProps || {};
+                    const res = { ...defaultState };
+
+                    for (const p of Object.keys(res)) {
+                        const startVal = s[p] !== undefined ? s[p] : (anim.startProps && anim.startProps[p] !== undefined ? anim.startProps[p] : defaultState[p]);
+                        const endVal = e[p] !== undefined ? e[p] : (anim.targetProps && anim.targetProps[p] !== undefined ? anim.targetProps[p] : startVal);
+                        res[p] = startVal + (endVal - startVal) * t;
                     }
+                    return res;
+                }
+
+                // In the gap between two sequential arrows: hold previous arrow's end state
+                if (i < sortedAnims.length - 1) {
+                    const nextAnim = sortedAnims[i + 1];
+                    if (relTime > animEnd && relTime < nextAnim.timeOffset) {
+                        const e = anim.endState || anim.targetProps || {};
+                        const res = { ...defaultState };
+                        for (const p of Object.keys(res)) {
+                            if (e[p] !== undefined) res[p] = e[p];
+                        }
+                        return res;
+                    }
+                }
+            }
+        }
+
+        // Legacy keyframe diamonds support if no arrows present
+        if (clip.keyframes && clip.keyframes.length > 0) {
+            const res = { ...defaultState };
+            const props = ['scale', 'scaleX', 'scaleY', 'opacity', 'x', 'y', 'rotation'];
+            for (const prop of props) {
+                const kfs = clip.keyframes.filter(k => k.property === prop).sort((a, b) => a.timeOffset - b.timeOffset);
+                if (kfs.length === 0) continue;
+
+                if (relTime <= kfs[0].timeOffset) {
+                    res[prop] = kfs[0].value;
+                } else if (relTime >= kfs[kfs.length - 1].timeOffset) {
+                    res[prop] = kfs[kfs.length - 1].value;
                 } else {
-                    const span = anim.duration || 1.0;
-                    let t = span > 0 ? (relTime - anim.timeOffset) / span : 0;
-                    t = this.evaluateEasing(Math.max(0, Math.min(1, t)), anim.easing || 'easeInOut');
-                    if (anim.targetProps) {
-                        for (const [p, targetVal] of Object.entries(anim.targetProps)) {
-                            const startVal = (anim.startProps && anim.startProps[p] !== undefined)
-                                ? anim.startProps[p]
-                                : (result[p] !== undefined ? result[p] : (p === 'scale' || p === 'opacity' ? 1.0 : 0));
-                            result[p] = startVal + (targetVal - startVal) * t;
+                    for (let i = 0; i < kfs.length - 1; i++) {
+                        const k1 = kfs[i];
+                        const k2 = kfs[i + 1];
+                        if (relTime >= k1.timeOffset && relTime <= k2.timeOffset) {
+                            const span = Math.max(0.001, k2.timeOffset - k1.timeOffset);
+                            let t = (relTime - k1.timeOffset) / span;
+                            t = this.evaluateEasing(t, k2.easing || 'easeInOut');
+                            res[prop] = k1.value + (k2.value - k1.value) * t;
+                            break;
                         }
                     }
-                    break;
                 }
             }
+            return res;
         }
 
-        if (!clip.keyframes || clip.keyframes.length === 0) {
-            return result;
-        }
-
-        const props = ['scale', 'scaleX', 'scaleY', 'opacity', 'x', 'y', 'rotation'];
-        for (const prop of props) {
-            const kfs = clip.keyframes.filter(k => k.property === prop).sort((a, b) => a.timeOffset - b.timeOffset);
-            if (kfs.length === 0) continue;
-
-            if (relTime <= kfs[0].timeOffset) {
-                result[prop] = kfs[0].value;
-            } else if (relTime >= kfs[kfs.length - 1].timeOffset) {
-                result[prop] = kfs[kfs.length - 1].value;
-            } else {
-                for (let i = 0; i < kfs.length - 1; i++) {
-                    const k1 = kfs[i];
-                    const k2 = kfs[i + 1];
-                    if (relTime >= k1.timeOffset && relTime <= k2.timeOffset) {
-                        const span = k2.timeOffset - k1.timeOffset;
-                        let t = span > 0 ? (relTime - k1.timeOffset) / span : 0;
-                        t = this.evaluateEasing(t, k2.easing || 'easeInOut');
-                        result[prop] = k1.value + (k2.value - k1.value) * t;
-                        break;
-                    }
-                }
-            }
-        }
-        return result;
+        return defaultState;
     }
 
     evaluateEasing(t, easing) {
@@ -1452,15 +1523,24 @@ class RpaCompositor {
             const inStyle = (bp.in?.style || 'pop').toLowerCase();
             let dx = 0, dy = 0, scale = 1.0, rot = 0, opacity = Math.min(1.0, t * 1.8);
 
-            if (inStyle === 'pop') {
-                const spring = Math.sin(t * Math.PI * 0.75) * (1.25 + stiffness * 0.35);
-                scale = (t > 0.7) ? (1.0 + (1.0 - t) * (0.3 + stiffness * 0.3)) : spring;
-                scale = Math.max(0, scale);
-            } else if (inStyle === 'pulsate' || inStyle === 'scale') {
-                const beats = Math.pow(Math.sin(t * Math.PI * 2.5), 2);
-                scale = t * 0.8 + beats * (0.4 + stiffness * 0.2);
+            if (inStyle === 'fade') {
+                // Fade: Text starts transparent and becomes visible smoothly in place
+                scale = 1.0;
+                opacity = Math.max(0, Math.min(1.0, t));
+                dx = 0; dy = 0; rot = 0;
+            } else if (inStyle === 'pop' || inStyle === 'scale') {
+                // Pop / Scale: Text starts small and grows big
+                scale = Math.sin(t * Math.PI * 0.5);
+                opacity = Math.min(1.0, t * 2.0);
+                dx = 0; dy = 0; rot = 0;
+            } else if (inStyle === 'rise') {
+                // Rise: Text comes smoothly from the bottom
+                dy = (1 - t) * (projH * 0.4);
+                opacity = Math.min(1.0, t * 1.6);
+                scale = 1.0;
+                dx = 0; rot = 0;
             } else if (inStyle === 'slide' || inStyle === 'slide-in' || inStyle === 'slide-drift') {
-                // Slide in from the full edge of the project resolution
+                // Slide: Text slides in from outside the screen
                 const springSnap = Math.exp(-t * decayRate) * Math.cos(t * oscFreq) * (50 * (1 - t));
                 const distY = (1 - t) * edgeDistY + springSnap;
                 const distX = (1 - t) * edgeDistX + springSnap;
@@ -1486,9 +1566,6 @@ class RpaCompositor {
                 else if (inDir === 'top') dy = -distY + b;
                 else dy = distY - b;
                 scale = 1.0 + (b > 8 ? 0.1 : -0.05);
-            } else if (inStyle === 'fade') {
-                scale = 0.5 + t * 0.5;
-                opacity = t;
             } else if (inStyle === 'drop') {
                 const dropY = Math.pow(1 - t, 2) * -edgeDistY;
                 const rebound = Math.sin(t * Math.PI * 3) * Math.exp(-t * decayRate) * 35;
@@ -1536,8 +1613,23 @@ class RpaCompositor {
             const outStyle = (bp.out?.style || 'slide').toLowerCase();
             let dx = 0, dy = 0, scale = 1.0, rot = 0, opacity = Math.min(1.0, t * 1.5);
 
-            if (outStyle === 'slide' || outStyle === 'slide-out' || outStyle === 'slide-drift') {
-                // Slide out off the edge of the project resolution
+            if (outStyle === 'fade') {
+                // Fade: Text disappears slowly in place
+                scale = 1.0;
+                opacity = Math.max(0, Math.min(1.0, t));
+                dx = 0; dy = 0; rot = 0;
+            } else if (outStyle === 'shrink' || outStyle === 'pop' || outStyle === 'scale') {
+                // Pop / Scale Down: Text shrinks and disappears
+                scale = Math.max(0, t);
+                opacity = t;
+                dx = 0; dy = 0; rot = 0;
+            } else if (outStyle === 'drop') {
+                // Drop: Text falls down
+                dy = Math.pow(1 - t, 2) * (projH * 0.45);
+                opacity = t;
+                dx = 0; rot = 0;
+            } else if (outStyle === 'slide' || outStyle === 'slide-out' || outStyle === 'slide-drift') {
+                // Slide Out: Text slides out of the screen
                 const distY = (1 - t) * edgeDistY;
                 const distX = (1 - t) * edgeDistX;
                 if (outDir === 'bottom') dy = distY;
@@ -1559,17 +1651,10 @@ class RpaCompositor {
             } else if (outStyle === 'bounce') {
                 dy = Math.pow(1 - t, 2) * edgeDistY;
                 rot = (1 - t) * 18;
-            } else if (outStyle === 'drop') {
-                dy = Math.pow(1 - t, 2) * edgeDistY;
             } else if (outStyle === 'roller') {
                 const distX = (1 - t) * edgeDistX;
                 dx = (outDir === 'left') ? -distX : distX;
                 rot = (outDir === 'left') ? -(1 - t) * 360 : (1 - t) * 360;
-            } else if (outStyle === 'fade') {
-                opacity = t;
-            } else if (outStyle === 'shrink' || outStyle === 'spin-grow') {
-                scale = Math.max(0, t);
-                if (outStyle === 'spin-grow') rot = (1 - t) * 720;
             } else if (outStyle === 'none') {
                 scale = 1.0;
                 opacity = 1.0;
@@ -1586,15 +1671,17 @@ class RpaCompositor {
             };
         }
 
-        // Phase 2: DURING (Looping continuous alphabet dance)
-        const dStyle = (bp.during?.style || 'dancing-wave').toLowerCase();
-        const dMov = bp.during?.movement || 'vertical';
+        // Phase 2: DURING (What text does while on screen - continuous, strictly independent styles, ZERO wave delay)
+        const dStyle = (bp.during?.style || 'none').toLowerCase();
         const loopTime = Math.max(0.2, (bp.during?.loopTime !== undefined ? bp.during.loopTime : (bp.during?.speed ? 1.0 / bp.during.speed : 1.0)));
         const speed = 1.0 / loopTime;
         const rawAmount = bp.during?.jump !== undefined ? bp.during.jump : (bp.during?.amount !== undefined ? bp.during.amount : 50);
         const amount = Math.max(0.1, rawAmount / 50.0); // 1.0 at default 50
 
-        const cyclePhase = (relTime * speed * Math.PI * 2) - (unitOffset * speed * Math.PI * 2);
+        // Wave phase delay is STRICTLY ZERO across all During styles to completely eliminate character wave ripples.
+        // Only if user explicitly chooses 'dancing-wave', a wave delay is used.
+        const duringUnitOffset = (dStyle === 'dancing-wave') ? (index * waveDelay) : 0;
+        const cyclePhase = (relTime * speed * Math.PI * 2) - (duringUnitOffset * speed * Math.PI * 2);
 
         let dx = 0;
         let dy = 0;
@@ -1605,104 +1692,72 @@ class RpaCompositor {
         let opacity = 1.0;
 
         if (dStyle === 'none') {
+            // No Style / None: text stays completely still in center
             return { dx: 0, dy: 0, scale: 1.0, scaleX: 1.0, scaleY: 1.0, rot: 0, opacity: 1.0, visible: true };
-        } else if (dStyle === 'jump' || dStyle === 'jump-hop') {
-            // High energetic hop with parabolic curve and landing squash - pure vertical hop without horizontal drift or rotation tilt
-            const jumpPhase = (dStyle === 'jump') ? (relTime * speed * Math.PI * 2) : cyclePhase;
-            const normCycle = ((jumpPhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
-            if (normCycle < Math.PI * 0.75) {
-                const hopT = normCycle / (Math.PI * 0.75);
-                const hop = Math.sin(hopT * Math.PI);
-                dy = -hop * (amount * 52);
-                scaleY = 1.0 + hop * (amount * 0.28);
-                scaleX = 1.0 - hop * (amount * 0.14);
-            } else {
-                const landT = (normCycle - Math.PI * 0.75) / (Math.PI * 0.25);
-                const squash = Math.sin(landT * Math.PI);
-                scaleY = 1.0 - squash * (amount * 0.20);
-                scaleX = 1.0 + squash * (amount * 0.20);
-                dy = 0;
-            }
-            dx = 0;
-            rot = 0;
-        } else if (dStyle === 'drift') {
-            // Smooth wandering figure-8 glide with gentle roll - zero jump bounce
-            dx = Math.sin(cyclePhase * 0.6) * (amount * 30);
-            dy = Math.cos(cyclePhase * 0.9) * (amount * 20);
-            rot = Math.sin(cyclePhase * 0.5) * (amount * 7);
-            scale = 1.0 + Math.sin(cyclePhase * 0.3) * (amount * 0.06);
-            scaleX = scale;
-            scaleY = scale;
-        } else if (dStyle === 'dancing-wave') {
-            // Smooth vertical harmonic wave along alphabets
-            const wave = Math.sin(cyclePhase);
-            const cosWave = Math.cos(cyclePhase);
-            dy = wave * (amount * 34);
-            rot = cosWave * (amount * 10);
-            scale = 1.0 + wave * (amount * 0.12);
-            if (dMov === 'horizontal') {
-                dx = wave * (amount * 28);
-                dy = 0;
-            } else if (dMov === 'both') {
-                dx = cosWave * (amount * 16);
-            }
-        } else if (dStyle === 'pulsating') {
-            // Heartbeat rhythmic expansion - pure scale, zero translation, zero tilt
-            const pCycle = ((cyclePhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
-            let thump = 0;
-            if (pCycle < Math.PI * 0.35) {
-                thump = Math.sin((pCycle / (Math.PI * 0.35)) * Math.PI) * 0.30;
-            } else if (pCycle < Math.PI * 0.7) {
-                thump = Math.sin(((pCycle - Math.PI * 0.35) / (Math.PI * 0.35)) * Math.PI) * 0.18;
-            }
-            scale = 1.0 + thump * amount;
+        } else if (dStyle === 'pulsating' || dStyle === 'pulsate') {
+            // Pulsate: Text slowly gets big and small - like breathing.
+            // Pure uniform breathing expansion across all letters without any wave ripple, translation, or rotation
+            const breath = Math.sin(cyclePhase);
+            scale = 1.0 + breath * (amount * 0.12);
             scaleX = scale;
             scaleY = scale;
             dx = 0;
             dy = 0;
             rot = 0;
-            scaleY = scale;
-        } else if (dStyle === 'wobble') {
-            // Rapid elastic jelly wobble
-            rot = Math.sin(cyclePhase * 2.8) * (amount * 15);
-            dx = Math.cos(cyclePhase * 2.8) * (amount * 12);
-            scaleX = 1.0 + Math.sin(cyclePhase * 2.8) * (amount * 0.18);
-            scaleY = 1.0 - Math.sin(cyclePhase * 2.8) * (amount * 0.18);
-        } else if (dStyle === 'swing') {
-            // Pendulum arc rotation
-            rot = Math.sin(cyclePhase) * (amount * 24);
-            dx = Math.sin(cyclePhase) * (amount * 20);
-            dy = (1 - Math.cos(cyclePhase)) * (amount * 10);
-        } else if (dStyle === 'wiggle-twist' || dStyle === 'wiggle') {
-            rot = (Math.sin(cyclePhase * 1.5) + Math.cos(cyclePhase * 2.2)) * (amount * 16);
-            dx = Math.sin(cyclePhase * 1.2) * (amount * 14);
-            dy = Math.cos(cyclePhase * 1.7) * (amount * 12);
-            scale = 1.0 + Math.sin(cyclePhase * 2.0) * (amount * 0.12);
-        } else if (dStyle === 'float-bob') {
-            dy = Math.sin(cyclePhase * 0.9) * (amount * 32);
-            dx = Math.cos(cyclePhase * 0.5) * (amount * 18);
-            rot = Math.sin(cyclePhase * 0.7) * (amount * 8);
-            scale = 1.0 + Math.sin(cyclePhase * 0.4) * (amount * 0.08);
-        } else if (dStyle === 'breathe') {
-            const breath = (Math.cos(cyclePhase * 0.7) + 1) / 2;
-            scale = 1.0 + breath * amount * 0.25;
-            scaleX = scale;
-            scaleY = scale;
-        } else if (dStyle === 'glitch') {
-            const twitch = Math.sin(cyclePhase * 2.8 + index * 4.2);
-            if (twitch > 0.6) {
-                dx = (Math.sin(twitch * 99) * 2 - 1) * (amount * 24);
-                dy = (Math.cos(twitch * 88) * 2 - 1) * (amount * 16);
-                rot = (Math.sin(twitch * 55) * 2 - 1) * (amount * 12);
+        } else if (dStyle === 'jitter' || dStyle === 'wiggle' || dStyle === 'shake') {
+            // Jitter: Text shakes slightly. High-frequency micro-tremor in place without drift or wave delay.
+            const jt = relTime * 34;
+            dx = (Math.sin(jt * 1.7) * 0.6 + Math.cos(jt * 2.3) * 0.4) * (amount * 5.0);
+            dy = (Math.cos(jt * 1.9) * 0.6 + Math.sin(jt * 2.7) * 0.4) * (amount * 5.0);
+            rot = Math.sin(jt * 2.1) * (amount * 1.6);
+            scale = 1.0;
+            scaleX = 1.0;
+            scaleY = 1.0;
+        } else if (dStyle === 'drift') {
+            // Drift: Text moves slowly. Smooth wandering translation without wave ripple or scale jumping.
+            dx = Math.sin(cyclePhase * 0.5) * (amount * 18);
+            dy = Math.cos(cyclePhase * 0.35) * (amount * 12);
+            rot = 0;
+            scale = 1.0;
+            scaleX = 1.0;
+            scaleY = 1.0;
+        } else if (dStyle === 'jump' || dStyle === 'jump-hop') {
+            // Jump: Synchronous vertical hop with landing squash across entire text, zero wave distortion or drift
+            const normCycle = ((cyclePhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
+            if (normCycle < Math.PI * 0.75) {
+                const hopT = normCycle / (Math.PI * 0.75);
+                const hop = Math.sin(hopT * Math.PI);
+                dy = -hop * (amount * 45);
+                scaleY = 1.0 + hop * (amount * 0.22);
+                scaleX = 1.0 - hop * (amount * 0.11);
+            } else {
+                const landT = (normCycle - Math.PI * 0.75) / (Math.PI * 0.25);
+                const squash = Math.sin(landT * Math.PI);
+                scaleY = 1.0 - squash * (amount * 0.16);
+                scaleX = 1.0 + squash * (amount * 0.16);
+                dy = 0;
             }
-        }
-
-        if (dMov === 'vertical' && dStyle !== 'dancing-wave' && dStyle !== 'jump-hop') {
-            dy += Math.sin(cyclePhase) * (amount * 20);
-        } else if (dMov === 'horizontal' && dStyle !== 'dancing-wave') {
-            dx += Math.cos(cyclePhase) * (amount * 20);
-        } else if (dMov === 'swing' && dStyle !== 'swing') {
-            rot += Math.sin(cyclePhase) * (amount * 20);
+            dx = 0;
+            rot = 0;
+        } else if (dStyle === 'swing') {
+            // Swing: Pendulum arc rotation
+            rot = Math.sin(cyclePhase) * (amount * 16);
+            dx = Math.sin(cyclePhase) * (amount * 12);
+            dy = (1 - Math.cos(cyclePhase)) * (amount * 6);
+            scale = 1.0;
+            scaleX = 1.0;
+            scaleY = 1.0;
+        } else if (dStyle === 'wobble') {
+            rot = Math.sin(cyclePhase * 2.5) * (amount * 8);
+            scaleX = 1.0 + Math.sin(cyclePhase * 2.5) * (amount * 0.12);
+            scaleY = 1.0 - Math.sin(cyclePhase * 2.5) * (amount * 0.12);
+            dx = 0; dy = 0;
+        } else if (dStyle === 'dancing-wave') {
+            // Explicit Dancing Wave only
+            const wave = Math.sin(cyclePhase);
+            dy = wave * (amount * 32);
+            rot = Math.cos(cyclePhase) * (amount * 8);
+            scale = 1.0 + wave * (amount * 0.10);
         }
 
         return {
@@ -2186,11 +2241,12 @@ class RpaCompositor {
     }
 
     applyTransitionClipping(clip, relTime, duration, drawX, drawY, drawW, drawH) {
-        if (!clip || clip.type === 'callout') return;
+        const isBlurOrLens = (clip && (clip.subtype === 'blur' || clip.subtype === 'magnify' || (clip.title && /blur|magnif/i.test(clip.title))));
+        if (!clip || (clip.type === 'callout' && !isBlurOrLens)) return;
         const tin = clip.transitionIn || 'none';
         const tout = clip.transitionOut || 'none';
-        const durIn = clip.transitionInDuration || 0.8;
-        const durOut = clip.transitionOutDuration || 0.8;
+        const durIn = Math.max(0.001, clip.transitionInDuration || 0.8);
+        const durOut = Math.max(0.001, clip.transitionOutDuration || 0.8);
         const timeLeft = duration - relTime;
 
         // 1. Geometric Clipping Transitions
@@ -2370,16 +2426,18 @@ class RpaCompositor {
         }
 
         // Glitch Scanlines
-        if ((tin === 'glitch-scan' && relTime < durIn) || (tout === 'glitch-scan' && timeLeft < durOut)) {
-            const p = tin === 'glitch-scan' ? (1 - relTime / durIn) : (1 - timeLeft / durOut);
-            this.ctx.save();
-            this.ctx.fillStyle = `rgba(15, 23, 42, ${p * 0.5})`;
-            for (let y = drawY; y < drawY + drawH; y += 12) {
-                if (Math.random() > 0.4) {
-                    this.ctx.fillRect(drawX, y, drawW, 4);
+        if (((tin === 'glitch-scan' || tin === 'glitch') && relTime < durIn) || ((tout === 'glitch-scan' || tout === 'glitch') && timeLeft < durOut)) {
+            const p = (tin === 'glitch-scan' || tin === 'glitch') ? (1 - relTime / durIn) : (1 - timeLeft / durOut);
+            if (drawW > 0 && drawH > 0 && Number.isFinite(drawX) && Number.isFinite(drawY)) {
+                this.ctx.save();
+                this.ctx.fillStyle = `rgba(15, 23, 42, ${Math.max(0, Math.min(1, p * 0.5))})`;
+                for (let y = drawY; y < drawY + drawH; y += 12) {
+                    if (Math.random() > 0.4) {
+                        this.ctx.fillRect(drawX, y, drawW, 4);
+                    }
                 }
+                this.ctx.restore();
             }
-            this.ctx.restore();
         }
 
         // 35mm Film Roll
@@ -2526,6 +2584,17 @@ class RpaCompositor {
                         this.ctx.fillStyle = `rgba(255, 200, 100, ${peak * 0.7})`;
                         this.ctx.fillRect(drawX, drawY, drawW, drawH);
                         this.ctx.restore();
+                    } else if (it.type === 'glitch' || it.type === 'glitch-scan') {
+                        if (drawW > 0 && drawH > 0 && Number.isFinite(drawX) && Number.isFinite(drawY)) {
+                            this.ctx.save();
+                            this.ctx.fillStyle = `rgba(15, 23, 42, ${peak * 0.55})`;
+                            for (let y = drawY; y < drawY + drawH; y += 12) {
+                                if (Math.random() > 0.4) {
+                                    this.ctx.fillRect(drawX, y, drawW, 4);
+                                }
+                            }
+                            this.ctx.restore();
+                        }
                     } else if (it.type === 'wipe-left' || it.type === 'wipe') {
                         this.ctx.beginPath();
                         this.ctx.rect(drawX, drawY, drawW * p, drawH);
@@ -2877,6 +2946,7 @@ class RpaCompositor {
                 type: 'glitch',
                 phase,
                 progress,
+                relTime: (typeof relTime === 'number' ? relTime : 0),
                 strobeVisible: true,
                 textAlpha: 0.8 + Math.random() * 0.2,
                 flashAlpha: Math.random() > 0.75 ? 0.4 : 0,
@@ -2990,8 +3060,10 @@ class RpaCompositor {
      * Studio Glyph Dynamics Engine (Character, Word, All glyphs),
      * and Font-Targeted Transitions (Shutter Strobe, Flash, Chromatic Glitch, Slide, Zoom).
      */
-    drawGlyphLayers(ctx, textToDraw, drawX, drawY, dance, clip, bScale, fillStyle, fontTrans, align = 'center', baseline = 'middle') {
+    drawGlyphLayers(ctx, textToDraw, drawX, drawY, dance, clip, bScale, fillStyle, fontTrans, align = 'center', baseline = 'middle', relTime = 0) {
         ctx.save();
+
+        const safeRelTime = (fontTrans && fontTrans.relTime !== undefined) ? fontTrans.relTime : (typeof relTime === 'number' ? relTime : 0);
 
         ctx.translate(drawX, drawY);
         if (dance && dance.rot) {
@@ -3038,7 +3110,7 @@ class RpaCompositor {
                     ctx.beginPath();
                     ctx.rect(-1000, -fSizeApprox + s * sliceH, 2000, sliceH);
                     ctx.clip();
-                    const jitterOffset = (Math.sin(relTime * 45 + s * 4.2) * 6 + (Math.random() - 0.5) * 4) * bScale;
+                    const jitterOffset = (Math.sin(safeRelTime * 45 + s * 4.2) * 6 + (Math.random() - 0.5) * 4) * bScale;
                     ctx.fillStyle = 'rgba(0, 242, 254, 0.7)';
                     ctx.fillText(textToDraw, targetX + jitterOffset, targetY);
                     ctx.restore();
@@ -3369,7 +3441,7 @@ class RpaCompositor {
 
                     if (!dance.visible || dance.opacity <= 0.001) continue;
 
-                    this.drawGlyphLayers(ctx, ch, charCx + dance.dx, curY + dance.dy, dance, charClip, bScale, charFill, fontTrans, 'center', 'middle');
+                    this.drawGlyphLayers(ctx, ch, charCx + dance.dx, curY + dance.dy, dance, charClip, bScale, charFill, fontTrans, 'center', 'middle', relTime);
 
                     if (sp && sp.fontFamily) {
                         ctx.font = `${fWeight} ${fSize}px ${fFamily}`;
@@ -3425,7 +3497,7 @@ class RpaCompositor {
                         return;
                     }
 
-                    this.drawGlyphLayers(ctx, tok, wordCx + dance.dx, curY + dance.dy, dance, charClip, bScale, charFill, fontTrans, 'center', 'middle');
+                    this.drawGlyphLayers(ctx, tok, wordCx + dance.dx, curY + dance.dy, dance, charClip, bScale, charFill, fontTrans, 'center', 'middle', relTime);
 
                     if (sp && sp.fontFamily) {
                         ctx.font = `${fWeight} ${fSize}px ${fFamily}`;
@@ -3454,7 +3526,7 @@ class RpaCompositor {
                         ctx.letterSpacing = `${Math.round(tracking)}px`;
                     }
 
-                    this.drawGlyphLayers(ctx, line, drawLineX, drawLineY, dance, clip, bScale, fillStyle, fontTrans, align, baseline);
+                    this.drawGlyphLayers(ctx, line, drawLineX, drawLineY, dance, clip, bScale, fillStyle, fontTrans, align, baseline, relTime);
 
                     if ('letterSpacing' in ctx) {
                         ctx.letterSpacing = '0px';
@@ -3495,7 +3567,7 @@ class RpaCompositor {
                         const drawCharX = dance ? (charCx + dance.dx) : charCx;
                         const drawCharY = dance ? (curY + dance.dy) : curY;
 
-                        this.drawGlyphLayers(ctx, ch, drawCharX, drawCharY, dance, charClip, bScale, charFill, fontTrans, 'center', baseline);
+                        this.drawGlyphLayers(ctx, ch, drawCharX, drawCharY, dance, charClip, bScale, charFill, fontTrans, 'center', baseline, relTime);
 
                         if (sp && sp.fontFamily) {
                             ctx.font = `${fWeight} ${fSize}px ${fFamily}`;
@@ -4281,14 +4353,17 @@ class RpaCompositor {
             lCtx.fill();
             lCtx.restore();
 
-            // Step B: Source-in composite magnified content
+            // Step B: Source-in composite magnified content (with bleed margin to cover feathered blur boundary)
             lCtx.save();
             lCtx.globalCompositeOperation = 'source-in';
-            const srcW = lw / mag;
-            const srcH = lh / mag;
+            const bleed = Math.round(blurOutline * 3);
+            const drawBleedW = lw + bleed * 2;
+            const drawBleedH = lh + bleed * 2;
+            const srcW = drawBleedW / mag;
+            const srcH = drawBleedH / mag;
             const srcX = focalX - srcW / 2;
             const srcY = focalY - srcH / 2;
-            lCtx.drawImage(this.scratchCanvas, srcX, srcY, srcW, srcH, cx - lw / 2, cy - lh / 2, lw, lh);
+            lCtx.drawImage(this.scratchCanvas, srcX, srcY, srcW, srcH, cx - lw / 2 - bleed, cy - lh / 2 - bleed, drawBleedW, drawBleedH);
 
             if (lensCurvature) {
                 const grad = lCtx.createLinearGradient(cx - lw / 2, cy - lh / 2, cx + lw / 2, cy + lh / 2);
@@ -4305,14 +4380,16 @@ class RpaCompositor {
             // Draw feathered lens onto main canvas
             this.ctx.drawImage(this.lensCanvas, 0, 0);
 
-            // Feathered soft glow border
-            this.ctx.save();
-            this.ctx.filter = `blur(${Math.max(2, Math.round(blurOutline * 0.4))}px)`;
-            this.ctx.strokeStyle = borderColor;
-            this.ctx.lineWidth = Math.max(1, blurOutline * 0.35);
-            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
-            this.ctx.stroke();
-            this.ctx.restore();
+            // Feathered soft outline border (if not frameless/none)
+            if (borderWidth > 0 && borderStyle !== 'none') {
+                this.ctx.save();
+                this.ctx.filter = `blur(${Math.max(2, Math.round(blurOutline * 0.4))}px)`;
+                this.ctx.strokeStyle = borderColor;
+                this.ctx.lineWidth = Math.max(1, borderWidth);
+                this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+                this.ctx.stroke();
+                this.ctx.restore();
+            }
         } else {
             // Crisp standard clipping when blurOutline is 0
             this.ctx.save();
@@ -4338,13 +4415,8 @@ class RpaCompositor {
             this.ctx.restore();
         }
 
-        // 4. Blur Outline / Edge Feather Fallback
-        if (blurOutline > 0 && borderStyle === 'none' && borderWidth === 0) {
-            // Already feathered by offscreen canvas mask above
-        }
-
-        // 5. Border & Outline Styling
-        if (borderWidth > 0 && borderStyle !== 'none') {
+        // 4. Border & Outline Styling (only for crisp unfeathered mode, as feathered mode handles outline above)
+        if (blurOutline === 0 && borderWidth > 0 && borderStyle !== 'none') {
             this.ctx.save();
             this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
             this.ctx.lineWidth = borderWidth;

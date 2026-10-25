@@ -120,7 +120,7 @@ class RpaExporter {
         const targetWidth = options.width || compositor.projectSettings.width || 1920;
         const targetHeight = options.height || compositor.projectSettings.height || 1080;
         const fps = options.fps || compositor.projectSettings.fps || 30;
-        const bitrate = options.bitrate || 16000000;
+        const bitrate = options.bitrate || 20000000;
         const format = options.format || 'webm';
 
         const engine = options.engine || 'software';
@@ -427,16 +427,16 @@ class RpaExporter {
             };
 
             const writeVint = (val) => {
-                let len = 1;
-                while (len <= 8 && val >= (Math.pow(2, 7 * len) - 1)) len++;
-                const mask = 1 << (7 * len);
-                let v = val | mask;
-                const b = [];
-                for (let i = len - 1; i >= 0; i--) {
-                    b[i] = v & 0xff;
-                    v = Math.floor(v / 256);
-                }
-                return b;
+                if (val < 0x7F) return [0x80 | val];
+                if (val < 0x3FFF) return [0x40 | (val >> 8), val & 0xFF];
+                if (val < 0x1FFFFF) return [0x20 | (val >> 16), (val >> 8) & 0xFF, val & 0xFF];
+                if (val < 0x0FFFFFFF) return [0x10 | (val >> 24), (val >> 16) & 0xFF, (val >> 8) & 0xFF, val & 0xFF];
+                const b0 = 0x08 | Math.floor(val / 0x100000000);
+                const b1 = Math.floor(val / 0x1000000) & 0xFF;
+                const b2 = Math.floor(val / 0x10000) & 0xFF;
+                const b3 = Math.floor(val / 0x100) & 0xFF;
+                const b4 = val & 0xFF;
+                return [b0, b1, b2, b3, b4];
             };
 
             const makeElement = (idBytes, dataBytes) => {
@@ -556,11 +556,57 @@ class RpaExporter {
             }
 
             // 3. Build Cues Element (0x1C 0x53 0xBB 0x6B) with adjusted cluster offsets
+            let videoTrackNumber = 1;
+            if (tracksPos !== -1) {
+                const trLen = readVint(tracksPos + 4);
+                if (trLen) {
+                    const trEnd = tracksPos + 4 + trLen.length + trLen.value;
+                    let p = tracksPos + 4 + trLen.length;
+                    while (p < Math.min(trEnd, bytes.length - 6)) {
+                        if (bytes[p] === 0xAE) { // TrackEntry
+                            const teLen = readVint(p + 1);
+                            if (teLen) {
+                                const entryEnd = p + 1 + teLen.length + teLen.value;
+                                let ep = p + 1 + teLen.length;
+                                let foundType = 0;
+                                let foundNum = 1;
+                                while (ep < entryEnd) {
+                                    if (bytes[ep] === 0xD7) { // TrackNumber
+                                        const nLen = readVint(ep + 1);
+                                        if (nLen) {
+                                            foundNum = bytes[ep + 1 + nLen.length];
+                                            ep += 1 + nLen.length + nLen.value;
+                                            continue;
+                                        }
+                                    }
+                                    if (bytes[ep] === 0x83) { // TrackType
+                                        const tLen = readVint(ep + 1);
+                                        if (tLen) {
+                                            foundType = bytes[ep + 1 + tLen.length];
+                                            ep += 1 + tLen.length + tLen.value;
+                                            continue;
+                                        }
+                                    }
+                                    ep++;
+                                }
+                                if (foundType === 1) { // 1 = Video Track
+                                    videoTrackNumber = foundNum;
+                                    break;
+                                }
+                                p = entryEnd;
+                                continue;
+                            }
+                        }
+                        p++;
+                    }
+                }
+            }
+
             const cuePoints = [];
             for (const c of clusters) {
                 const cOffset = c.offset + seekHeadLen + durShift;
                 const timeEl = makeElement([0xB3], writeUint(c.time));
-                const trackEl = makeElement([0xF7], [1]);
+                const trackEl = makeElement([0xF7], [videoTrackNumber]);
                 const posEl = makeElement([0xF1], writeUint(cOffset));
                 const trackPosEl = makeElement([0xB7], [...trackEl, ...posEl]);
                 const pointEl = makeElement([0xBB], [...timeEl, ...trackPosEl]);

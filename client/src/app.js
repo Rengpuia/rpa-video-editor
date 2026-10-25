@@ -56,8 +56,22 @@ class RpaStudioApp {
 
         // 3. Timeline Action Buttons
         document.querySelectorAll('.tool-btn').forEach(btn => {
-            btn.addEventListener('pointerup', () => btn.blur());
-            btn.addEventListener('click', () => btn.blur());
+            const clearFocus = () => {
+                try { btn.blur(); } catch (_) {}
+            };
+            btn.addEventListener('pointerup', clearFocus);
+            btn.addEventListener('pointerleave', clearFocus);
+            btn.addEventListener('mouseup', clearFocus);
+            btn.addEventListener('mouseleave', clearFocus);
+            btn.addEventListener('click', () => {
+                clearFocus();
+                setTimeout(clearFocus, 40);
+            });
+        });
+        window.addEventListener('mouseup', () => {
+            if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('tool-btn')) {
+                document.activeElement.blur();
+            }
         });
 
         document.getElementById('btnAddTrack').onclick = (e) => {
@@ -1499,6 +1513,11 @@ class RpaStudioApp {
                     clip.behavior = e.target.value;
                     if (clip.behavior !== 'none') {
                         clip.behaviorProps = this.getDefaultBehaviorProps(clip.behavior);
+                        // Default center behavior effect so it is easy to see and edit
+                        clip.xOffset = 0;
+                        clip.yOffset = 0;
+                        clip.x = 0.5;
+                        clip.y = 0.5;
                     } else {
                         clip.behavior = 'none';
                         delete clip.behavior;
@@ -1520,6 +1539,10 @@ class RpaStudioApp {
                 const clip = this.timeline.getClip(this.timeline.selectedClipId);
                 if (clip && clip.behavior && clip.behavior !== 'none') {
                     clip.behaviorProps = this.getDefaultBehaviorProps(clip.behavior);
+                    clip.xOffset = 0;
+                    clip.yOffset = 0;
+                    clip.x = 0.5;
+                    clip.y = 0.5;
                     this.renderProperties(clip);
                     this.renderTimeline();
                     this.timeline.saveSnapshot();
@@ -1708,6 +1731,14 @@ class RpaStudioApp {
                 if (!clip.behaviorProps) clip.behaviorProps = this.getDefaultBehaviorProps(clip.behavior);
                 if (!clip.behaviorProps.during) clip.behaviorProps.during = {};
                 clip.behaviorProps.during.style = e.target.value;
+                if (e.target.value !== 'dancing-wave') {
+                    clip.behaviorProps.during.offset = 0.00;
+                    clip.behaviorProps.waveDelay = 0.0;
+                    const rOff = document.getElementById('rngBehaviorDuringOffset');
+                    const nOff = document.getElementById('numBehaviorDuringOffset');
+                    if (rOff) rOff.value = 0;
+                    if (nOff) nOff.value = '0.00';
+                }
                 const lblParam = document.getElementById('lblBehaviorDuringParamName');
                 if (lblParam) {
                     lblParam.innerText = (e.target.value === 'jump') ? 'Jump' : (e.target.value === 'drift' ? 'Drift' : 'Amount');
@@ -2743,6 +2774,22 @@ class RpaStudioApp {
             propMagBlurOutline.onchange = () => this.timeline.saveSnapshot();
         }
 
+        // Quick Blur Outline Presets (0px Crisp, 8px Soft, 18px Medium, 30px Heavy)
+        document.querySelectorAll('.btn-mag-blur-preset').forEach(btn => {
+            btn.onclick = (e) => {
+                const clip = getClip();
+                if (!clip) return;
+                const blurVal = parseInt(e.currentTarget.getAttribute('data-blur') || '0', 10);
+                clip.blurOutline = blurVal;
+                const propInput = document.getElementById('propMagBlurOutline');
+                if (propInput) propInput.value = blurVal;
+                const lbl = document.getElementById('lblMagBlurOutline');
+                if (lbl) lbl.innerText = `${blurVal}px`;
+                this.timeline.saveSnapshot();
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            };
+        });
+
         // 7. Opacity & Spotlight Dimming
         const propMagOpacity = document.getElementById('propMagOpacity');
         if (propMagOpacity) {
@@ -2836,6 +2883,34 @@ class RpaStudioApp {
         const btnAddMagTrackKeyframe = document.getElementById('btnAddMagTrackKeyframe');
         if (btnAddMagTrackKeyframe) {
             btnAddMagTrackKeyframe.onclick = () => {
+                const clip = getClip();
+                if (!clip) return;
+                if (!clip.trackPoints) clip.trackPoints = [];
+                const relTime = Math.max(0, Math.min(clip.duration, this.playheadTime - clip.startTime));
+                const canvas = document.getElementById('previewCanvas');
+                const cw = canvas ? canvas.width : 1920;
+                const ch = canvas ? canvas.height : 1080;
+                const interp = this.compositor.getInterpolatedTrackPoint(clip, relTime, cw, ch);
+                const currentPt = interp ? { x: interp.x / cw, y: interp.y / ch } : (clip.trackPoint || { x: 0.5, y: 0.5 });
+                clip.trackPoints = clip.trackPoints.filter(k => Math.abs(k.time - relTime) > 0.05);
+                clip.trackPoints.push({
+                    time: parseFloat(relTime.toFixed(2)),
+                    x: parseFloat(currentPt.x.toFixed(3)),
+                    y: parseFloat(currentPt.y.toFixed(3))
+                });
+                clip.trackPoints.sort((a, b) => a.time - b.time);
+                clip.trackPoint = { x: parseFloat(currentPt.x.toFixed(3)), y: parseFloat(currentPt.y.toFixed(3)) };
+                clip.trackingMode = 'point';
+                this.timeline.saveSnapshot();
+                this.renderProperties(clip);
+                this.renderTimeline();
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            };
+        }
+
+        const btnRecordMagTrackPoint = document.getElementById('btnRecordMagTrackPoint');
+        if (btnRecordMagTrackPoint) {
+            btnRecordMagTrackPoint.onclick = () => {
                 const clip = getClip();
                 if (!clip) return;
                 if (!clip.trackPoints) clip.trackPoints = [];
@@ -3358,11 +3433,11 @@ class RpaStudioApp {
             preset: preset,
             name: 'Jump And Fall',
             tension: 50,
-            textUnit: 'character',
-            waveDelay: 0.08,
+            textUnit: 'all',
+            waveDelay: 0.0,
             in: {
                 style: 'bounce',
-                type: 'ltr',
+                type: 'all',
                 movement: 'bounce',
                 direction: 'bottom',
                 bounce: 40,
@@ -3371,21 +3446,21 @@ class RpaStudioApp {
             },
             during: {
                 style: 'jump',
-                type: 'ltr',
+                type: 'all',
                 jump: 60.00,
                 loopTime: 1.00,
-                offset: 0.08,
+                offset: 0.00,
                 delay: 1.67,
                 loops: 1,
                 loopForever: true
             },
             out: {
                 style: 'drop',
-                type: 'ltr',
+                type: 'all',
                 movement: 'ease-in-quart',
                 direction: 'bottom',
                 speed: 92,
-                offset: 0.08,
+                offset: 0.00,
                 duration: 0.8
             }
         };
@@ -3399,19 +3474,19 @@ class RpaStudioApp {
             base.out = { style: 'drop', type: 'all', movement: 'ease-in-quart', direction: 'bottom', speed: 92, offset: 0.00, duration: 0.8 };
         } else if (preset === 'slide' || preset === 'slide-drift' || preset === 'slide-in') {
             base.name = 'Slide & Drift';
-            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'left', bounce: 50, offset: 0.05, duration: 0.8 };
-            base.during = { style: 'drift', type: 'ltr', jump: 25.00, loopTime: 2.00, offset: 0.08, delay: 0.50, loops: 1, loopForever: true };
-            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'right', speed: 85, offset: 0.05, duration: 0.8 };
+            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'left', bounce: 50, offset: 0.00, duration: 0.8 };
+            base.during = { style: 'drift', type: 'ltr', jump: 25.00, loopTime: 2.00, offset: 0.00, delay: 0.50, loops: 1, loopForever: true };
+            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'right', speed: 85, offset: 0.00, duration: 0.8 };
         } else if (preset === 'slide-bounce') {
             base.name = 'Slide & Bounce';
-            base.in = { style: 'slide-bounce', type: 'ltr', movement: 'bounce', direction: 'left', bounce: 70, offset: 0.05, duration: 0.9 };
-            base.during = { style: 'jump', type: 'ltr', jump: 35.00, loopTime: 1.20, offset: 0.06, delay: 0.50, loops: 1, loopForever: true };
-            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.05, duration: 0.8 };
+            base.in = { style: 'slide-bounce', type: 'ltr', movement: 'bounce', direction: 'left', bounce: 70, offset: 0.00, duration: 0.9 };
+            base.during = { style: 'jump', type: 'ltr', jump: 35.00, loopTime: 1.20, offset: 0.00, delay: 0.50, loops: 1, loopForever: true };
+            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.00, duration: 0.8 };
         } else if (preset === 'pop' || preset === 'popup') {
             base.name = 'Pop Up';
-            base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 60, offset: 0.04, duration: 0.7 };
-            base.during = { style: 'pulsating', type: 'ltr', jump: 30.00, loopTime: 1.20, offset: 0.06, delay: 1.00, loops: 1, loopForever: true };
-            base.out = { style: 'shrink', type: 'ltr', movement: 'ease-in-quart', direction: 'bottom', speed: 85, offset: 0.04, duration: 0.7 };
+            base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 60, offset: 0.00, duration: 0.7 };
+            base.during = { style: 'pulsating', type: 'ltr', jump: 30.00, loopTime: 1.20, offset: 0.00, delay: 1.00, loops: 1, loopForever: true };
+            base.out = { style: 'shrink', type: 'ltr', movement: 'ease-in-quart', direction: 'bottom', speed: 85, offset: 0.00, duration: 0.7 };
         } else if (preset === 'pulsing' || preset === 'pulsate') {
             base.name = 'Pulsing';
             base.in = { style: 'scale', type: 'all', movement: 'smooth', direction: 'bottom', bounce: 40, offset: 0.00, duration: 0.6 };
@@ -3420,48 +3495,48 @@ class RpaStudioApp {
         } else if (preset === 'fade-scale') {
             base.name = 'Fade & Scale Bloom';
             base.in = { style: 'fade', type: 'all', movement: 'smooth', direction: 'bottom', bounce: 30, offset: 0.00, duration: 0.8 };
-            base.during = { style: 'drift', type: 'ltr', jump: 20.00, loopTime: 2.20, offset: 0.05, delay: 0.50, loops: 1, loopForever: true };
+            base.during = { style: 'drift', type: 'ltr', jump: 20.00, loopTime: 2.20, offset: 0.00, delay: 0.50, loops: 1, loopForever: true };
             base.out = { style: 'fade', type: 'all', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.00, duration: 0.8 };
         } else if (preset === 'wiggle') {
             base.name = 'Wiggle / Jitter';
-            base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 70, offset: 0.03, duration: 0.6 };
-            base.during = { style: 'wiggle', type: 'ltr', jump: 35.00, loopTime: 0.60, offset: 0.04, delay: 0.10, loops: 1, loopForever: true };
-            base.out = { style: 'shrink', type: 'ltr', movement: 'bounce', direction: 'bottom', speed: 80, offset: 0.04, duration: 0.6 };
+            base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 70, offset: 0.00, duration: 0.6 };
+            base.during = { style: 'wiggle', type: 'ltr', jump: 35.00, loopTime: 0.60, offset: 0.00, delay: 0.10, loops: 1, loopForever: true };
+            base.out = { style: 'shrink', type: 'ltr', movement: 'bounce', direction: 'bottom', speed: 80, offset: 0.00, duration: 0.6 };
         } else if (preset === 'swing') {
             base.name = 'Pendulum Swing';
-            base.in = { style: 'bounce', type: 'ltr', movement: 'spring', direction: 'top', bounce: 55, offset: 0.06, duration: 0.8 };
-            base.during = { style: 'swing', type: 'ltr', jump: 45.00, loopTime: 1.50, offset: 0.08, delay: 0.30, loops: 1, loopForever: true };
-            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 88, offset: 0.06, duration: 0.8 };
+            base.in = { style: 'bounce', type: 'ltr', movement: 'spring', direction: 'top', bounce: 55, offset: 0.00, duration: 0.8 };
+            base.during = { style: 'swing', type: 'ltr', jump: 45.00, loopTime: 1.50, offset: 0.00, delay: 0.30, loops: 1, loopForever: true };
+            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 88, offset: 0.00, duration: 0.8 };
         } else if (preset === 'float-bob') {
             base.name = 'Float & Bob';
-            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', bounce: 30, offset: 0.05, duration: 0.9 };
-            base.during = { style: 'float-bob', type: 'ltr', jump: 28.00, loopTime: 1.80, offset: 0.06, delay: 0.20, loops: 1, loopForever: true };
-            base.out = { style: 'fade', type: 'ltr', movement: 'smooth', direction: 'top', speed: 80, offset: 0.05, duration: 0.8 };
+            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', bounce: 30, offset: 0.00, duration: 0.9 };
+            base.during = { style: 'float-bob', type: 'ltr', jump: 28.00, loopTime: 1.80, offset: 0.00, delay: 0.20, loops: 1, loopForever: true };
+            base.out = { style: 'fade', type: 'ltr', movement: 'smooth', direction: 'top', speed: 80, offset: 0.00, duration: 0.8 };
         } else if (preset === 'shifting') {
             base.name = 'Shifting Drift';
-            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'top', bounce: 35, offset: 0.05, duration: 0.8 };
-            base.during = { style: 'drift', type: 'ltr', jump: 35.00, loopTime: 1.60, offset: 0.08, delay: 0.30, loops: 1, loopForever: true };
-            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 80, offset: 0.05, duration: 0.8 };
+            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'top', bounce: 35, offset: 0.00, duration: 0.8 };
+            base.during = { style: 'drift', type: 'ltr', jump: 35.00, loopTime: 1.60, offset: 0.00, delay: 0.30, loops: 1, loopForever: true };
+            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 80, offset: 0.00, duration: 0.8 };
         } else if (preset === 'hinge') {
             base.name = 'Hinge Corner Drop';
-            base.in = { style: 'drop', type: 'ltr', movement: 'spring', direction: 'top', bounce: 50, offset: 0.05, duration: 0.8 };
-            base.during = { style: 'swing', type: 'ltr', jump: 40.00, loopTime: 1.50, offset: 0.08, delay: 0.20, loops: 1, loopForever: true };
-            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 90, offset: 0.05, duration: 0.8 };
+            base.in = { style: 'drop', type: 'ltr', movement: 'spring', direction: 'top', bounce: 50, offset: 0.00, duration: 0.8 };
+            base.during = { style: 'swing', type: 'ltr', jump: 40.00, loopTime: 1.50, offset: 0.00, delay: 0.20, loops: 1, loopForever: true };
+            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 90, offset: 0.00, duration: 0.8 };
         } else if (preset === 'roller') {
             base.name = 'Roller 360';
-            base.in = { style: 'roller', type: 'ltr', movement: 'smooth', direction: 'left', bounce: 45, offset: 0.05, duration: 0.9 };
-            base.during = { style: 'drift', type: 'ltr', jump: 20.00, loopTime: 1.80, offset: 0.06, delay: 0.40, loops: 1, loopForever: true };
-            base.out = { style: 'roller', type: 'ltr', movement: 'smooth', direction: 'right', speed: 85, offset: 0.05, duration: 0.9 };
+            base.in = { style: 'roller', type: 'ltr', movement: 'smooth', direction: 'left', bounce: 45, offset: 0.00, duration: 0.9 };
+            base.during = { style: 'drift', type: 'ltr', jump: 20.00, loopTime: 1.80, offset: 0.00, delay: 0.40, loops: 1, loopForever: true };
+            base.out = { style: 'roller', type: 'ltr', movement: 'smooth', direction: 'right', speed: 85, offset: 0.00, duration: 0.9 };
         } else if (preset === 'spin-grow') {
             base.name = '720° Spin Grow';
-            base.in = { style: 'spin-grow', type: 'ltr', movement: 'smooth', direction: 'center', bounce: 50, offset: 0.04, duration: 0.8 };
-            base.during = { style: 'breathe', type: 'ltr', jump: 20.00, loopTime: 2.00, offset: 0.06, delay: 0.30, loops: 1, loopForever: true };
-            base.out = { style: 'spin-grow', type: 'ltr', movement: 'smooth', direction: 'center', speed: 80, offset: 0.04, duration: 0.8 };
+            base.in = { style: 'spin-grow', type: 'ltr', movement: 'smooth', direction: 'center', bounce: 50, offset: 0.00, duration: 0.8 };
+            base.during = { style: 'breathe', type: 'ltr', jump: 20.00, loopTime: 2.00, offset: 0.00, delay: 0.30, loops: 1, loopForever: true };
+            base.out = { style: 'spin-grow', type: 'ltr', movement: 'smooth', direction: 'center', speed: 80, offset: 0.00, duration: 0.8 };
         } else if (preset === 'squash-stretch') {
             base.name = 'Squash & Stretch';
-            base.in = { style: 'bounce', type: 'ltr', movement: 'bounce', direction: 'top', bounce: 65, offset: 0.05, duration: 0.8 };
-            base.during = { style: 'jump', type: 'ltr', jump: 45.00, loopTime: 0.90, offset: 0.08, delay: 0.20, loops: 1, loopForever: true };
-            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.05, duration: 0.7 };
+            base.in = { style: 'bounce', type: 'ltr', movement: 'bounce', direction: 'top', bounce: 65, offset: 0.00, duration: 0.8 };
+            base.during = { style: 'jump', type: 'ltr', jump: 45.00, loopTime: 0.90, offset: 0.00, delay: 0.20, loops: 1, loopForever: true };
+            base.out = { style: 'drop', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.00, duration: 0.7 };
         } else if (preset === 'glow-pulse') {
             base.name = 'Glow Breathe';
             base.in = { style: 'fade', type: 'all', movement: 'smooth', direction: 'bottom', bounce: 30, offset: 0.00, duration: 0.7 };
@@ -3469,9 +3544,16 @@ class RpaStudioApp {
             base.out = { style: 'fade', type: 'all', movement: 'smooth', direction: 'bottom', speed: 80, offset: 0.00, duration: 0.7 };
         } else if (preset === 'glitch-jitter') {
             base.name = 'Glitch Jitter';
-            base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 60, offset: 0.03, duration: 0.6 };
-            base.during = { style: 'glitch', type: 'ltr', jump: 35.00, loopTime: 0.50, offset: 0.04, delay: 0.10, loops: 1, loopForever: true };
-            base.out = { style: 'shrink', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.03, duration: 0.6 };
+            base.in = { style: 'pop', type: 'ltr', movement: 'spring', direction: 'bottom', bounce: 60, offset: 0.00, duration: 0.6 };
+            base.during = { style: 'glitch', type: 'ltr', jump: 35.00, loopTime: 0.50, offset: 0.00, delay: 0.10, loops: 1, loopForever: true };
+            base.out = { style: 'shrink', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.00, duration: 0.6 };
+        } else if (preset === 'dancing-wave') {
+            base.name = 'Dancing Wave';
+            base.textUnit = 'character';
+            base.waveDelay = 0.08;
+            base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', bounce: 40, offset: 0.05, duration: 0.8 };
+            base.during = { style: 'dancing-wave', type: 'ltr', jump: 30.00, loopTime: 1.20, offset: 0.08, delay: 0.20, loops: 1, loopForever: true };
+            base.out = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'bottom', speed: 85, offset: 0.05, duration: 0.8 };
         } else {
             base.name = behaviorName.charAt(0).toUpperCase() + behaviorName.slice(1);
         }
@@ -3515,6 +3597,11 @@ class RpaStudioApp {
         clip.behavior = type;
         if (type !== 'none') {
             clip.behaviorProps = this.getDefaultBehaviorProps(type);
+            // Default center behavior effect so it is easy to see and edit
+            clip.xOffset = 0;
+            clip.yOffset = 0;
+            clip.x = 0.5;
+            clip.y = 0.5;
             this.seek(clip.startTime + clip.duration / 2);
         } else {
             clip.behaviorProps = null;
@@ -4396,9 +4483,14 @@ class RpaStudioApp {
         const mins = Math.floor(this.playheadTime / 60);
         const secs = Math.floor(this.playheadTime % 60);
         const centis = Math.floor((this.playheadTime % 1) * 100);
+        const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
         const lblTime = document.getElementById('lblTimecode');
         if (lblTime) {
-            lblTime.innerText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+            lblTime.innerText = timeStr;
+        }
+        const lblMagTime = document.getElementById('lblMagRecordTime');
+        if (lblMagTime) {
+            lblMagTime.innerText = timeStr;
         }
 
         // Auto-follow playhead during playback
@@ -4415,6 +4507,10 @@ class RpaStudioApp {
                 }
             }
         }
+    }
+
+    updateTimelinePlayhead() {
+        this.updatePlayheadPosition();
     }
 
     updateTimelineRuler() {
@@ -5325,7 +5421,7 @@ class RpaStudioApp {
                 if (rngDuLT) rngDuLT.value = Math.round(duLoopTime * 100);
                 if (numDuLT) numDuLT.value = duLoopTime.toFixed(2);
 
-                const duOff = bp.during?.offset !== undefined ? bp.during.offset : 0.08;
+                const duOff = bp.during?.offset !== undefined ? bp.during.offset : 0.00;
                 const rngDuOff = document.getElementById('rngBehaviorDuringOffset');
                 const numDuOff = document.getElementById('numBehaviorDuringOffset');
                 if (rngDuOff) rngDuOff.value = Math.round(duOff * 100);
@@ -5974,10 +6070,10 @@ class RpaStudioApp {
 
         const fps = parseInt(document.getElementById('selExportFps')?.value || '30', 10);
         
-        let bitrate = 8000000;
+        let bitrate = 20000000;
         const bitratePreset = document.getElementById('selExportBitratePreset')?.value;
         if (bitratePreset === 'custom') {
-            const customMbps = parseFloat(document.getElementById('numExportCustomBitrate')?.value || '8');
+            const customMbps = parseFloat(document.getElementById('numExportCustomBitrate')?.value || '20');
             bitrate = Math.max(500000, Math.min(100000000, Math.round(customMbps * 1000000)));
         } else if (bitratePreset) {
             bitrate = parseInt(bitratePreset, 10);
@@ -6354,6 +6450,11 @@ class RpaStudioApp {
             clip.behavior = data.toolName;
             if (data.toolName !== 'none') {
                 clip.behaviorProps = this.getDefaultBehaviorProps(data.toolName);
+                // Default center behavior effect so it is easy to see and edit
+                clip.xOffset = 0;
+                clip.yOffset = 0;
+                clip.x = 0.5;
+                clip.y = 0.5;
                 this.seek(clip.startTime + clip.duration / 2);
             } else {
                 clip.behaviorProps = null;
@@ -7125,6 +7226,20 @@ class RpaStudioApp {
             });
         }
 
+        const startState = {
+            xOffset: clip.xOffset || 0,
+            yOffset: clip.yOffset || 0,
+            scale: clip.scale !== undefined ? clip.scale : 1.0,
+            rotation: clip.rotation || 0,
+            opacity: clip.opacity !== undefined ? clip.opacity : 1.0
+        };
+        const endState = { ...startState };
+        if (targetProps.x !== undefined) endState.xOffset = targetProps.x;
+        if (targetProps.y !== undefined) endState.yOffset = targetProps.y;
+        if (targetProps.scale !== undefined) endState.scale = targetProps.scale;
+        if (targetProps.rotation !== undefined) endState.rotation = targetProps.rotation;
+        if (targetProps.opacity !== undefined) endState.opacity = targetProps.opacity;
+
         // Add Studio Animation Arrow object
         const animItem = {
             id: arrowId,
@@ -7134,7 +7249,9 @@ class RpaStudioApp {
             duration: parseFloat(effectiveDur.toFixed(2)),
             easing: easing,
             targetProps: { ...targetProps },
-            startProps: { ...startPropsMap }
+            startProps: { ...startPropsMap },
+            startState: startState,
+            endState: endState
         };
         clip.animations.push(animItem);
         clip.animations.sort((a, b) => a.timeOffset - b.timeOffset);
@@ -7185,6 +7302,86 @@ class RpaStudioApp {
                     }
                 }
                 this.timeline.saveSnapshot();
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            };
+        }
+
+        const btnJumpTail = document.getElementById('btnAnimJumpTail');
+        if (btnJumpTail) {
+            btnJumpTail.onclick = () => {
+                this.seek(clip.startTime + anim.timeOffset);
+            };
+        }
+
+        const btnJumpHead = document.getElementById('btnAnimJumpHead');
+        if (btnJumpHead) {
+            btnJumpHead.onclick = () => {
+                this.seek(clip.startTime + anim.timeOffset + anim.duration);
+            };
+        }
+
+        const btnRecStart = document.getElementById('btnAnimRecordStart');
+        if (btnRecStart) {
+            btnRecStart.onclick = () => {
+                anim.startState = {
+                    xOffset: clip.xOffset || 0,
+                    yOffset: clip.yOffset || 0,
+                    scale: clip.scale !== undefined ? clip.scale : 1.0,
+                    rotation: clip.rotation || 0,
+                    opacity: clip.opacity !== undefined ? clip.opacity : 1.0
+                };
+                if (!anim.startProps) anim.startProps = {};
+                anim.startProps.x = anim.startState.xOffset;
+                anim.startProps.y = anim.startState.yOffset;
+                anim.startProps.scale = anim.startState.scale;
+                anim.startProps.rotation = anim.startState.rotation;
+                anim.startProps.opacity = anim.startState.opacity;
+                if (clip.keyframes) {
+                    for (const kf of clip.keyframes) {
+                        if (kf.arrowId === anim.id && kf.id.endsWith('_start')) {
+                            if (kf.property === 'x') kf.value = anim.startState.xOffset;
+                            else if (kf.property === 'y') kf.value = anim.startState.yOffset;
+                            else if (kf.property === 'scale') kf.value = anim.startState.scale;
+                            else if (kf.property === 'rotation') kf.value = anim.startState.rotation;
+                            else if (kf.property === 'opacity') kf.value = anim.startState.opacity;
+                        }
+                    }
+                }
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            };
+        }
+
+        const btnRecEnd = document.getElementById('btnAnimRecordEnd');
+        if (btnRecEnd) {
+            btnRecEnd.onclick = () => {
+                anim.endState = {
+                    xOffset: clip.xOffset || 0,
+                    yOffset: clip.yOffset || 0,
+                    scale: clip.scale !== undefined ? clip.scale : 1.0,
+                    rotation: clip.rotation || 0,
+                    opacity: clip.opacity !== undefined ? clip.opacity : 1.0
+                };
+                if (!anim.targetProps) anim.targetProps = {};
+                anim.targetProps.x = anim.endState.xOffset;
+                anim.targetProps.y = anim.endState.yOffset;
+                anim.targetProps.scale = anim.endState.scale;
+                anim.targetProps.rotation = anim.endState.rotation;
+                anim.targetProps.opacity = anim.endState.opacity;
+                if (clip.keyframes) {
+                    for (const kf of clip.keyframes) {
+                        if (kf.arrowId === anim.id && kf.id.endsWith('_end')) {
+                            if (kf.property === 'x') kf.value = anim.endState.xOffset;
+                            else if (kf.property === 'y') kf.value = anim.endState.yOffset;
+                            else if (kf.property === 'scale') kf.value = anim.endState.scale;
+                            else if (kf.property === 'rotation') kf.value = anim.endState.rotation;
+                            else if (kf.property === 'opacity') kf.value = anim.endState.opacity;
+                        }
+                    }
+                }
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
                 this.compositor.renderFrame(this.timeline, this.playheadTime);
             };
         }
@@ -7574,14 +7771,18 @@ class RpaStudioApp {
             if (this.compositor.activeCanvasTool === 'pointer') {
                 let selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
 
-                // Check if clicked directly on manual track point reticle
-                if (selClip && (selClip.trackingMode === 'point' || selClip.trackPoint || (selClip.trackPoints && selClip.trackPoints.length > 0))) {
+                // Check if clicked directly on manual track point reticle or inside magnifier lens
+                if (selClip && (selClip.toolType === 'magnify' || selClip.calloutType === 'magnify' || selClip.trackingMode === 'point' || selClip.trackPoint || (selClip.trackPoints && selClip.trackPoints.length > 0))) {
                     const relTime = Math.max(0, Math.min(selClip.duration, this.playheadTime - selClip.startTime));
                     const tp = this.compositor.getInterpolatedTrackPoint(selClip, relTime, canvas.width, canvas.height);
                     if (tp) {
                         const crosshairX = tp.x + (selClip.xOffset || 0);
                         const crosshairY = tp.y + (selClip.yOffset || 0);
-                        if (distance(pt.x, pt.y, crosshairX, crosshairY) <= 24) {
+                        const b = this.compositor.getClipCanvasBounds(selClip);
+                        const hitRadius = (selClip.toolType === 'magnify' || selClip.calloutType === 'magnify')
+                            ? Math.max(30, Math.min(b.width, b.height) / 2)
+                            : 24;
+                        if (distance(pt.x, pt.y, crosshairX, crosshairY) <= hitRadius) {
                             isInteracting = true;
                             interactionMode = 'trackpoint';
                             canvas.style.cursor = 'crosshair';
@@ -7693,6 +7894,10 @@ class RpaStudioApp {
                     this.compositor.renderFrame(this.timeline, this.playheadTime);
                 } else {
                     // Clicked on empty canvas background
+                    // Preserve magnifier selection so user can scrub timeline or record points without losing selection
+                    if (selClip && (selClip.toolType === 'magnify' || selClip.calloutType === 'magnify')) {
+                        return;
+                    }
                     this.timeline.selectedClipId = null;
                     this.renderTimeline();
                     this.renderProperties(null);
@@ -7750,19 +7955,18 @@ class RpaStudioApp {
                 selClip.trackPoint = { x: parseFloat(normX.toFixed(3)), y: parseFloat(normY.toFixed(3)) };
                 selClip.trackingMode = 'point';
 
-                if (selClip.trackPoints && selClip.trackPoints.length > 0) {
-                    let existing = selClip.trackPoints.find(k => Math.abs(k.time - relTime) <= 0.12);
-                    if (existing) {
-                        existing.x = parseFloat(normX.toFixed(3));
-                        existing.y = parseFloat(normY.toFixed(3));
-                    } else {
-                        selClip.trackPoints.push({
-                            time: parseFloat(relTime.toFixed(2)),
-                            x: parseFloat(normX.toFixed(3)),
-                            y: parseFloat(normY.toFixed(3))
-                        });
-                        selClip.trackPoints.sort((a, b) => a.time - b.time);
-                    }
+                if (!selClip.trackPoints) selClip.trackPoints = [];
+                let existing = selClip.trackPoints.find(k => Math.abs(k.time - relTime) <= 0.12);
+                if (existing) {
+                    existing.x = parseFloat(normX.toFixed(3));
+                    existing.y = parseFloat(normY.toFixed(3));
+                } else {
+                    selClip.trackPoints.push({
+                        time: parseFloat(relTime.toFixed(2)),
+                        x: parseFloat(normX.toFixed(3)),
+                        y: parseFloat(normY.toFixed(3))
+                    });
+                    selClip.trackPoints.sort((a, b) => a.time - b.time);
                 }
 
                 const numX = document.getElementById('numMagTrackX');
@@ -7933,6 +8137,36 @@ class RpaStudioApp {
 
         const onPointerUp = () => {
             if (isInteracting) {
+                const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+                if (selClip) {
+                    if (interactionMode === 'trackpoint' && selClip.trackPoints) {
+                        selClip.trackPoints.sort((a, b) => a.time - b.time);
+                        this.renderProperties(selClip);
+                    }
+                    // Auto-sync animation startState or endState if keyframe arrow is active and near tail/head
+                    if (selClip.animations && selClip.animations.length > 0) {
+                        const relTime = Math.max(0, Math.min(selClip.duration, this.playheadTime - selClip.startTime));
+                        for (const anim of selClip.animations) {
+                            if (Math.abs(relTime - anim.timeOffset) <= 0.15) {
+                                anim.startState = {
+                                    xOffset: selClip.xOffset || 0,
+                                    yOffset: selClip.yOffset || 0,
+                                    scale: selClip.scale !== undefined ? selClip.scale : 1.0,
+                                    rotation: selClip.rotation || 0,
+                                    opacity: selClip.opacity !== undefined ? selClip.opacity : 1.0
+                                };
+                            } else if (Math.abs(relTime - (anim.timeOffset + anim.duration)) <= 0.15) {
+                                anim.endState = {
+                                    xOffset: selClip.xOffset || 0,
+                                    yOffset: selClip.yOffset || 0,
+                                    scale: selClip.scale !== undefined ? selClip.scale : 1.0,
+                                    rotation: selClip.rotation || 0,
+                                    opacity: selClip.opacity !== undefined ? selClip.opacity : 1.0
+                                };
+                            }
+                        }
+                    }
+                }
                 isInteracting = false;
                 interactionMode = null;
                 if (this.compositor.alignmentGuides) {

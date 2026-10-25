@@ -920,11 +920,9 @@ class RpaTimeline {
                 }
             };
 
-            // Empty Track Click to Deselect Clip & Seek
+            // Empty Track Click to Seek (keeps active clip selected for seamless keyframe/trackpoint recording)
             contentEl.onpointerdown = (e) => {
                 if (e.target === contentEl) {
-                    this.selectedClipId = null;
-                    if (onClipSelected) onClipSelected(null);
                     const rect = contentEl.getBoundingClientRect();
                     const clickX = e.clientX - rect.left;
                     const time = Math.max(0, clickX / this.pixelsPerSecond);
@@ -1213,10 +1211,10 @@ class RpaTimeline {
                     // Edge Trim Priority: Clicking within 8px of clip borders activates trim handles directly from edges
                     const clipRect = clipEl.getBoundingClientRect();
                     const clickRelX = e.clientX - clipRect.left;
-                    if (clickRelX <= 8) {
+                    if (clickRelX <= 14) {
                         action = 'trim-left';
                         targetEl = clipEl.querySelector('.clip-handle-left') || clipEl;
-                    } else if ((clipRect.width - clickRelX) <= 8) {
+                    } else if ((clipRect.width - clickRelX) <= 14) {
                         action = 'trim-right';
                         targetEl = clipEl.querySelector('.clip-handle-right') || clipEl;
                     }
@@ -1225,10 +1223,11 @@ class RpaTimeline {
                     const wedgeOutHit = e.target.closest('.wedge-out');
                     const wedgeInHit = e.target.closest('.wedge-in');
                     if (action !== 'trim-left' && action !== 'trim-right') {
-                        if (action === 'resize-trans-out' || (wedgeOutHit && (actionTarget?.classList.contains('handle-out') || e.target.classList.contains('handle-out') || (clickRelX >= (clipRect.width - (clip.transitionOutDuration || 0.8) * this.pixelsPerSecond) && clickRelX <= (clipRect.width - (clip.transitionOutDuration || 0.8) * this.pixelsPerSecond + 12))))) {
+                        const outHandleX = clipRect.width - (clip.transitionOutDuration || 0.8) * this.pixelsPerSecond;
+                        if (action === 'resize-trans-out' || (wedgeOutHit && (actionTarget?.classList.contains('handle-out') || e.target.classList.contains('handle-out') || Math.abs(clickRelX - outHandleX) <= 18))) {
                             action = 'resize-trans-out';
                             targetEl = wedgeOutHit?.querySelector('.handle-out') || wedgeOutHit || targetEl;
-                        } else if (action === 'resize-trans-in' || (wedgeInHit && (actionTarget?.classList.contains('handle-in') || e.target.classList.contains('handle-in') || (clickRelX >= ((clip.transitionInDuration || 0.8) * this.pixelsPerSecond - 12) && clickRelX <= ((clip.transitionInDuration || 0.8) * this.pixelsPerSecond + 4))))) {
+                        } else if (action === 'resize-trans-in' || (wedgeInHit && (actionTarget?.classList.contains('handle-in') || e.target.classList.contains('handle-in') || Math.abs(clickRelX - (clip.transitionInDuration || 0.8) * this.pixelsPerSecond) <= 18))) {
                             action = 'resize-trans-in';
                             targetEl = wedgeInHit?.querySelector('.handle-in') || wedgeInHit || targetEl;
                         }
@@ -1348,6 +1347,16 @@ class RpaTimeline {
 
                     const onClipMove = (moveEvent) => {
                         const deltaSec = (moveEvent.clientX - startX) / this.pixelsPerSecond;
+
+                        if (action === 'inspect-transition' && Math.abs(deltaSec) >= 0.03) {
+                            if (targetEl.closest('.wedge-out')) {
+                                action = 'resize-trans-out';
+                            } else if (targetEl.closest('.wedge-in')) {
+                                action = 'resize-trans-in';
+                            } else if (targetEl.closest('.wedge-intermediate')) {
+                                action = 'drag-intermediate-trans';
+                            }
+                        }
 
                         if (action === 'resize-trans-in') {
                             // Dragging entrance transition duration on timeline
