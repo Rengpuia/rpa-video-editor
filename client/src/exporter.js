@@ -120,7 +120,7 @@ class RpaExporter {
         const targetWidth = options.width || compositor.projectSettings.width || 1920;
         const targetHeight = options.height || compositor.projectSettings.height || 1080;
         const fps = options.fps || compositor.projectSettings.fps || 30;
-        const bitrate = options.bitrate || 6000000;
+        const bitrate = options.bitrate || 16000000;
         const format = options.format || 'webm';
 
         const engine = options.engine || 'software';
@@ -148,17 +148,28 @@ class RpaExporter {
         const totalExportDuration = Math.max(0.1, exportEnd - exportStart);
         const frameInterval = 1000 / fps;
 
-        // Dedicated Offscreen Rendering Canvas for chosen resolution
+        // Dedicated Offscreen Rendering Canvas for chosen resolution with studio high-DPI quality
         const exportCanvas = document.createElement('canvas');
         exportCanvas.width = targetWidth;
         exportCanvas.height = targetHeight;
         const exportCtx = exportCanvas.getContext('2d', { alpha: true });
+        exportCtx.imageSmoothingEnabled = true;
+        exportCtx.imageSmoothingQuality = 'high';
+        exportCtx.textRendering = 'geometricPrecision';
 
         // Buffer Compositor for atomic frame composition (prevents black flashing)
         const bufferCanvas = document.createElement('canvas');
         bufferCanvas.width = targetWidth;
         bufferCanvas.height = targetHeight;
+        const bufferCtx = bufferCanvas.getContext('2d', { alpha: true });
+        bufferCtx.imageSmoothingEnabled = true;
+        bufferCtx.imageSmoothingQuality = 'high';
+        bufferCtx.textRendering = 'geometricPrecision';
+
         const exportCompositor = new window.RpaCompositor(bufferCanvas);
+        exportCompositor.ctx.imageSmoothingEnabled = true;
+        exportCompositor.ctx.imageSmoothingQuality = 'high';
+        exportCompositor.ctx.textRendering = 'geometricPrecision';
         exportCompositor.setProjectSettings(targetWidth, targetHeight, fps, compositor.projectSettings?.backgroundColor || '#0f1115');
         exportCompositor.visualFx = { ...compositor.visualFx };
         exportCompositor.cursorOptions = { ...compositor.cursorOptions };
@@ -375,8 +386,8 @@ class RpaExporter {
     }
 
     /**
-     * Injects EBML Duration and Cues Seek Index table into exported WebM Blobs
-     * Eliminates gray frame glitching, tearing, and macroblocking when seeking forward in external media players
+     * Injects EBML Duration, Front-Loaded SeekHead, and Cues Seek Index table into exported WebM Blobs
+     * Eliminates video glitching, gray frames, macroblocking and lag when seeking forward in external media players
      */
     static async injectWebmSeekCues(blob, durationSec) {
         try {
@@ -433,6 +444,12 @@ class RpaExporter {
                 return [...idBytes, ...lenBytes, ...dataBytes];
             };
 
+            const makeSeekEntry = (idBytes, posVal) => {
+                const seekId = makeElement([0x53, 0xAB], idBytes);
+                const seekPos = makeElement([0x53, 0xAC], writeUint(posVal));
+                return makeElement([0x4D, 0xBB], [...seekId, ...seekPos]);
+            };
+
             // Find Segment (0x18 0x53 0x80 0x67)
             let segPos = -1;
             for (let i = 0; i < Math.min(256, bytes.length - 4); i++) {
@@ -447,12 +464,33 @@ class RpaExporter {
             if (!segVint) return blob;
             const segPayloadStart = segPos + 4 + segVint.length;
 
-            // Scan clusters and collect cue points
+            // Scan Info, Tracks, and Clusters
+            let infoPos = -1;
+            let infoV = null;
+            let tracksPos = -1;
             const clusters = [];
             let pos = segPayloadStart;
 
             while (pos < bytes.length - 4) {
-                // Check for Cluster ID: 0x1F 0x43 0xB6 0x75
+                // Info ID: 0x15 0x49 0xA9 0x66
+                if (bytes[pos] === 0x15 && bytes[pos + 1] === 0x49 && bytes[pos + 2] === 0xA9 && bytes[pos + 3] === 0x66) {
+                    infoPos = pos;
+                    infoV = readVint(pos + 4);
+                    if (infoV) {
+                        pos = pos + 4 + infoV.length + infoV.value;
+                        continue;
+                    }
+                }
+                // Tracks ID: 0x16 0x54 0xAE 0x6B
+                if (bytes[pos] === 0x16 && bytes[pos + 1] === 0x54 && bytes[pos + 2] === 0xAE && bytes[pos + 3] === 0x6B) {
+                    tracksPos = pos;
+                    const tv = readVint(pos + 4);
+                    if (tv) {
+                        pos = pos + 4 + tv.length + tv.value;
+                        continue;
+                    }
+                }
+                // Cluster ID: 0x1F 0x43 0xB6 0x75
                 if (bytes[pos] === 0x1F && bytes[pos + 1] === 0x43 && bytes[pos + 2] === 0xB6 && bytes[pos + 3] === 0x75) {
                     const clusterStart = pos;
                     const cVint = readVint(pos + 4);
@@ -487,22 +525,77 @@ class RpaExporter {
 
             if (clusters.length === 0) return blob;
 
-            // Build Cues Element (0x1C 0x53 0xBB 0x6B)
+            // 1. Construct 64-bit IEEE float Duration element (0x44 0x89) in milliseconds
+            const dv = new DataView(new ArrayBuffer(8));
+            dv.setFloat64(0, Math.max(0.1, durationSec) * 1000.0, false);
+            const durationElement = [0x44, 0x89, 0x88, ...new Uint8Array(dv.buffer)];
+
+            let newInfoElement = null;
+            let durShift = 0;
+            let origInfoTotalLength = 0;
+
+            if (infoPos !== -1 && infoV) {
+                origInfoTotalLength = 4 + infoV.length + infoV.value;
+                const origInfoPayload = Array.from(bytes.subarray(infoPos + 4 + infoV.length, infoPos + origInfoTotalLength));
+                newInfoElement = makeElement([0x15, 0x49, 0xA9, 0x66], [...origInfoPayload, ...durationElement]);
+                durShift = newInfoElement.length - origInfoTotalLength;
+            }
+
+            // 2. Converge SeekHead pointing to Info, Tracks, and Cues
+            let seekHeadLen = 50;
+            let seekHeadElement = [];
+            for (let pass = 0; pass < 3; pass++) {
+                const infoTarget = seekHeadLen;
+                const tracksTarget = (tracksPos !== -1 ? tracksPos - segPayloadStart : 0) + seekHeadLen + durShift;
+                const cuesTarget = (bytes.length - segPayloadStart) + seekHeadLen + durShift;
+                const s1 = makeSeekEntry([0x15, 0x49, 0xA9, 0x66], infoTarget);
+                const s2 = makeSeekEntry([0x16, 0x54, 0xAE, 0x6B], tracksTarget);
+                const s3 = makeSeekEntry([0x1C, 0x53, 0xBB, 0x6B], cuesTarget);
+                seekHeadElement = makeElement([0x11, 0x4D, 0x9B, 0x74], [...s1, ...s2, ...s3]);
+                seekHeadLen = seekHeadElement.length;
+            }
+
+            // 3. Build Cues Element (0x1C 0x53 0xBB 0x6B) with adjusted cluster offsets
             const cuePoints = [];
             for (const c of clusters) {
+                const cOffset = c.offset + seekHeadLen + durShift;
                 const timeEl = makeElement([0xB3], writeUint(c.time));
                 const trackEl = makeElement([0xF7], [1]);
-                const posEl = makeElement([0xF1], writeUint(c.offset));
+                const posEl = makeElement([0xF1], writeUint(cOffset));
                 const trackPosEl = makeElement([0xB7], [...trackEl, ...posEl]);
                 const pointEl = makeElement([0xBB], [...timeEl, ...trackPosEl]);
                 cuePoints.push(...pointEl);
             }
             const cuesElement = makeElement([0x1C, 0x53, 0xBB, 0x6B], cuePoints);
 
-            // Append Cues element to end of Segment payload
-            const newBytes = new Uint8Array(bytes.length + cuesElement.length);
-            newBytes.set(bytes, 0);
-            newBytes.set(new Uint8Array(cuesElement), bytes.length);
+            // 4. Assemble Final WebM binary with SeekHead at front and Cues at end
+            const totalNewLength = segPayloadStart + seekHeadElement.length + (newInfoElement ? newInfoElement.length : 0) + (bytes.length - (infoPos !== -1 ? (infoPos + origInfoTotalLength) : segPayloadStart)) + cuesElement.length;
+            const newBytes = new Uint8Array(totalNewLength);
+
+            let outPos = 0;
+            // A. EBML Header + Segment ID & Length vint
+            newBytes.set(bytes.subarray(0, segPayloadStart), outPos);
+            outPos += segPayloadStart;
+
+            // B. Front-Loaded SeekHead element
+            newBytes.set(seekHeadElement, outPos);
+            outPos += seekHeadElement.length;
+
+            // C. Updated Info element with Duration
+            if (newInfoElement) {
+                newBytes.set(newInfoElement, outPos);
+                outPos += newInfoElement.length;
+            }
+
+            // D. Remaining payload from original file (Tracks, Clusters)
+            const copyStart = (infoPos !== -1 && origInfoTotalLength > 0) ? (infoPos + origInfoTotalLength) : segPayloadStart;
+            const remainder = bytes.subarray(copyStart);
+            newBytes.set(remainder, outPos);
+            outPos += remainder.length;
+
+            // E. Cues Seek Index table at end of file
+            newBytes.set(cuesElement, outPos);
+            outPos += cuesElement.length;
 
             return new Blob([newBytes], { type: blob.type || 'video/webm' });
         } catch (e) {

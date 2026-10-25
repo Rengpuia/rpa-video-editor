@@ -415,6 +415,9 @@ class RpaCompositor {
             const progress = Math.max(0, Math.min(1, relTime / clip.duration));
 
             this.ctx.save();
+            this.ctx.imageSmoothingEnabled = true;
+            this.ctx.imageSmoothingQuality = 'high';
+            this.ctx.textRendering = 'geometricPrecision';
 
             // 1. Calculate Behaviors (Pop, Drift, Pulse, Jump, Fade-Scale, Hinge, Shifting, Roller)
             const behaviorTransform = this.computeBehavior(clip.behavior, progress, relTime, clip.duration, clip);
@@ -553,9 +556,9 @@ class RpaCompositor {
                 this.ctx.translate(-(drawX + drawW / 2), -(drawY + drawH / 2));
             }
 
-            // Apply Transition Geometric Clipping (Wipe / Circle / Flash / Flare) across video & media clips
-            // Callouts are excluded so transitions only apply to the text typography itself
-            if (clip.type !== 'callout') {
+            // Apply Transition Geometric Clipping (Wipe / Circle / Flash / Flare) across video, media clips, and blur/lens tools
+            const isBlurOrLensTool = (clip.type === 'callout') && (clip.subtype === 'blur' || (clip.title && clip.title.includes('Blur')) || clip.subtype === 'magnify' || (clip.title && clip.title.includes('Magnif')));
+            if (clip.type !== 'callout' || isBlurOrLensTool) {
                 this.applyTransitionClipping(clip, relTime, clip.duration, drawX, drawY, drawW, drawH);
             }
 
@@ -1327,7 +1330,7 @@ class RpaCompositor {
         if (dStyle === 'none') {
             return { x: 0, y: 0, scale: 1.0, rotation: 0, opacity: 1.0 };
         } else if (dStyle === 'jump') {
-            // High energetic leap with parabolic flight and squash & stretch landing
+            // High energetic leap with parabolic flight and squash & stretch landing - isolated vertical hop, zero drift or tilt
             const normCycle = ((cycleTime % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
             if (normCycle < Math.PI * 0.75) {
                 const hopT = normCycle / (Math.PI * 0.75);
@@ -1340,14 +1343,16 @@ class RpaCompositor {
                 scale = 1.0 - squash;
                 y = 0;
             }
+            x = 0;
+            rot = 0;
         } else if (dStyle === 'drift') {
-            // Smooth wandering figure-8 glide with gentle roll
+            // Smooth wandering figure-8 glide with gentle roll - isolated drift, zero jump bounce
             x = Math.sin(cycleTime * 0.6) * (amount * 35);
             y = Math.cos(cycleTime * 0.9) * (amount * 22);
             rot = Math.sin(cycleTime * 0.5) * (amount * 7);
         } else if (dStyle === 'pulsating') {
-            // Double-thump heartbeat expansion and contraction
-            const pCycle = cycleTime % (Math.PI * 2);
+            // Double-thump heartbeat expansion and contraction - isolated scale, zero translation, zero tilt
+            const pCycle = ((cycleTime % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
             let thump = 0;
             if (pCycle < Math.PI * 0.35) {
                 thump = Math.sin((pCycle / (Math.PI * 0.35)) * Math.PI) * 0.24;
@@ -1355,6 +1360,9 @@ class RpaCompositor {
                 thump = Math.sin(((pCycle - Math.PI * 0.35) / (Math.PI * 0.35)) * Math.PI) * 0.15;
             }
             scale = 1.0 + thump * amount;
+            x = 0;
+            y = 0;
+            rot = 0;
         } else if (dStyle === 'dancing-wave') {
             // Smooth harmonic wave translation and tilt
             y = Math.sin(cycleTime) * (amount * 32);
@@ -1599,15 +1607,15 @@ class RpaCompositor {
         if (dStyle === 'none') {
             return { dx: 0, dy: 0, scale: 1.0, scaleX: 1.0, scaleY: 1.0, rot: 0, opacity: 1.0, visible: true };
         } else if (dStyle === 'jump' || dStyle === 'jump-hop') {
-            // High energetic hop with parabolic curve and landing squash
-            const normCycle = ((cyclePhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
+            // High energetic hop with parabolic curve and landing squash - pure vertical hop without horizontal drift or rotation tilt
+            const jumpPhase = (dStyle === 'jump') ? (relTime * speed * Math.PI * 2) : cyclePhase;
+            const normCycle = ((jumpPhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
             if (normCycle < Math.PI * 0.75) {
                 const hopT = normCycle / (Math.PI * 0.75);
                 const hop = Math.sin(hopT * Math.PI);
                 dy = -hop * (amount * 52);
                 scaleY = 1.0 + hop * (amount * 0.28);
                 scaleX = 1.0 - hop * (amount * 0.14);
-                rot = Math.cos(normCycle) * (amount * 6);
             } else {
                 const landT = (normCycle - Math.PI * 0.75) / (Math.PI * 0.25);
                 const squash = Math.sin(landT * Math.PI);
@@ -1615,12 +1623,16 @@ class RpaCompositor {
                 scaleX = 1.0 + squash * (amount * 0.20);
                 dy = 0;
             }
+            dx = 0;
+            rot = 0;
         } else if (dStyle === 'drift') {
-            // Smooth wandering figure-8 glide with gentle roll
+            // Smooth wandering figure-8 glide with gentle roll - zero jump bounce
             dx = Math.sin(cyclePhase * 0.6) * (amount * 30);
             dy = Math.cos(cyclePhase * 0.9) * (amount * 20);
             rot = Math.sin(cyclePhase * 0.5) * (amount * 7);
             scale = 1.0 + Math.sin(cyclePhase * 0.3) * (amount * 0.06);
+            scaleX = scale;
+            scaleY = scale;
         } else if (dStyle === 'dancing-wave') {
             // Smooth vertical harmonic wave along alphabets
             const wave = Math.sin(cyclePhase);
@@ -1635,7 +1647,7 @@ class RpaCompositor {
                 dx = cosWave * (amount * 16);
             }
         } else if (dStyle === 'pulsating') {
-            // Heartbeat rhythmic expansion
+            // Heartbeat rhythmic expansion - pure scale, zero translation, zero tilt
             const pCycle = ((cyclePhase % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
             let thump = 0;
             if (pCycle < Math.PI * 0.35) {
@@ -1645,6 +1657,10 @@ class RpaCompositor {
             }
             scale = 1.0 + thump * amount;
             scaleX = scale;
+            scaleY = scale;
+            dx = 0;
+            dy = 0;
+            rot = 0;
             scaleY = scale;
         } else if (dStyle === 'wobble') {
             // Rapid elastic jelly wobble
@@ -1961,6 +1977,12 @@ class RpaCompositor {
                     alpha = Math.min(alpha, dip);
                 }
             }
+        }
+
+        const transOp = (clip.transitionOpacity !== undefined) ? clip.transitionOpacity : 1.0;
+        if (alpha < 1.0) {
+            // Apply Transition Opacity: controls the depth/strength of the transition fade
+            alpha = 1.0 - (1.0 - alpha) * transOp;
         }
 
         return Math.max(0, Math.min(1, alpha));
@@ -4188,17 +4210,18 @@ class RpaCompositor {
                 cx = curPoint.x * width + (clip.xOffset || 0);
                 cy = curPoint.y * height + (clip.yOffset || 0);
             }
-        } else if (clip.trackingMode === 'point') {
-            const pt = this.getInterpolatedTrackPoint(clip, relTime, width, height);
-            if (pt) {
-                cx = pt.x + (clip.xOffset || 0);
-                cy = pt.y + (clip.yOffset || 0);
-            }
         } else if (clip.trackingMode === 'motion') {
             const trackedPos = this.getTrackedMediaMotion(clip, relTime, width, height);
             if (trackedPos) {
                 cx = trackedPos.x;
                 cy = trackedPos.y;
+            }
+        } else {
+            // Manual Track Point or Keyframed Track Points (auto-follow in point mode or when track points exist)
+            const pt = this.getInterpolatedTrackPoint(clip, relTime, width, height);
+            if (pt) {
+                cx = pt.x + (clip.xOffset || 0);
+                cy = pt.y + (clip.yOffset || 0);
             }
         }
 
@@ -4234,44 +4257,90 @@ class RpaCompositor {
         }
 
         const op = Math.max(0.05, Math.min(1.0, clip.opacity !== undefined ? clip.opacity : 1.0));
+        const transAlpha = this.computeTransitionAlpha(clip, relTime, duration);
         this.ctx.save();
-        this.ctx.globalAlpha = op;
+        this.ctx.globalAlpha = op * transAlpha;
 
-        // 3. Clipped Magnified Content
-        this.ctx.save();
-        this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
-        this.ctx.clip();
-
-        // Sample underlying media at magnification zoom factor
-        const srcW = lw / mag;
-        const srcH = lh / mag;
-        const srcX = focalX - srcW / 2;
-        const srcY = focalY - srcH / 2;
-        this.ctx.drawImage(this.scratchCanvas, srcX, srcY, srcW, srcH, cx - lw / 2, cy - lh / 2, lw, lh);
-
-        // Glass Specular Curved Reflection Highlight
-        if (lensCurvature) {
-            const grad = this.ctx.createLinearGradient(cx - lw / 2, cy - lh / 2, cx + lw / 2, cy + lh / 2);
-            grad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
-            grad.addColorStop(0.35, 'rgba(255, 255, 255, 0.06)');
-            grad.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
-            grad.addColorStop(1, 'rgba(0, 0, 0, 0.12)');
-            this.ctx.fillStyle = grad;
-            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
-            this.ctx.fill();
-        }
-        this.ctx.restore();
-
-        // 4. Blur Outline / Edge Feather
+        // 3. Magnified Content (with true Feathered Blur Outline if blurOutline > 0)
         if (blurOutline > 0) {
+            if (!this.lensCanvas) {
+                this.lensCanvas = document.createElement('canvas');
+            }
+            if (this.lensCanvas.width !== width || this.lensCanvas.height !== height) {
+                this.lensCanvas.width = width;
+                this.lensCanvas.height = height;
+            }
+            const lCtx = this.lensCanvas.getContext('2d');
+            lCtx.clearRect(0, 0, width, height);
+
+            // Step A: Draw mask with blurred feathered edge
+            lCtx.save();
+            lCtx.filter = `blur(${blurOutline}px)`;
+            lCtx.fillStyle = '#ffffff';
+            this.buildShapePath(lCtx, shape, cx, cy, lw, lh);
+            lCtx.fill();
+            lCtx.restore();
+
+            // Step B: Source-in composite magnified content
+            lCtx.save();
+            lCtx.globalCompositeOperation = 'source-in';
+            const srcW = lw / mag;
+            const srcH = lh / mag;
+            const srcX = focalX - srcW / 2;
+            const srcY = focalY - srcH / 2;
+            lCtx.drawImage(this.scratchCanvas, srcX, srcY, srcW, srcH, cx - lw / 2, cy - lh / 2, lw, lh);
+
+            if (lensCurvature) {
+                const grad = lCtx.createLinearGradient(cx - lw / 2, cy - lh / 2, cx + lw / 2, cy + lh / 2);
+                grad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+                grad.addColorStop(0.35, 'rgba(255, 255, 255, 0.06)');
+                grad.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0.12)');
+                lCtx.fillStyle = grad;
+                this.buildShapePath(lCtx, shape, cx, cy, lw, lh);
+                lCtx.fill();
+            }
+            lCtx.restore();
+
+            // Draw feathered lens onto main canvas
+            this.ctx.drawImage(this.lensCanvas, 0, 0);
+
+            // Feathered soft glow border
             this.ctx.save();
-            this.ctx.shadowColor = borderColor;
-            this.ctx.shadowBlur = blurOutline;
-            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+            this.ctx.filter = `blur(${Math.max(2, Math.round(blurOutline * 0.4))}px)`;
             this.ctx.strokeStyle = borderColor;
             this.ctx.lineWidth = Math.max(1, blurOutline * 0.35);
+            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
             this.ctx.stroke();
             this.ctx.restore();
+        } else {
+            // Crisp standard clipping when blurOutline is 0
+            this.ctx.save();
+            this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+            this.ctx.clip();
+
+            const srcW = lw / mag;
+            const srcH = lh / mag;
+            const srcX = focalX - srcW / 2;
+            const srcY = focalY - srcH / 2;
+            this.ctx.drawImage(this.scratchCanvas, srcX, srcY, srcW, srcH, cx - lw / 2, cy - lh / 2, lw, lh);
+
+            if (lensCurvature) {
+                const grad = this.ctx.createLinearGradient(cx - lw / 2, cy - lh / 2, cx + lw / 2, cy + lh / 2);
+                grad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+                grad.addColorStop(0.35, 'rgba(255, 255, 255, 0.06)');
+                grad.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0.12)');
+                this.ctx.fillStyle = grad;
+                this.buildShapePath(this.ctx, shape, cx, cy, lw, lh);
+                this.ctx.fill();
+            }
+            this.ctx.restore();
+        }
+
+        // 4. Blur Outline / Edge Feather Fallback
+        if (blurOutline > 0 && borderStyle === 'none' && borderWidth === 0) {
+            // Already feathered by offscreen canvas mask above
         }
 
         // 5. Border & Outline Styling

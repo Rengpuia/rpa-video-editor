@@ -1210,26 +1210,37 @@ class RpaTimeline {
                         return;
                     }
 
-                    // Edge Trim Priority: Clicking within 6px of clip borders activates trim handles directly from edges
+                    // Edge Trim Priority: Clicking within 8px of clip borders activates trim handles directly from edges
                     const clipRect = clipEl.getBoundingClientRect();
                     const clickRelX = e.clientX - clipRect.left;
-                    if (!action || action === 'trim-left' || action === 'trim-right') {
-                        if (clickRelX <= 6) {
-                            action = 'trim-left';
-                            targetEl = clipEl.querySelector('.clip-handle-left') || clipEl;
-                        } else if ((clipRect.width - clickRelX) <= 6) {
-                            action = 'trim-right';
-                            targetEl = clipEl.querySelector('.clip-handle-right') || clipEl;
+                    if (clickRelX <= 8) {
+                        action = 'trim-left';
+                        targetEl = clipEl.querySelector('.clip-handle-left') || clipEl;
+                    } else if ((clipRect.width - clickRelX) <= 8) {
+                        action = 'trim-right';
+                        targetEl = clipEl.querySelector('.clip-handle-right') || clipEl;
+                    }
+
+                    // Transition Duration Dragging / Wedge Resize Handles
+                    const wedgeOutHit = e.target.closest('.wedge-out');
+                    const wedgeInHit = e.target.closest('.wedge-in');
+                    if (action !== 'trim-left' && action !== 'trim-right') {
+                        if (action === 'resize-trans-out' || (wedgeOutHit && (actionTarget?.classList.contains('handle-out') || e.target.classList.contains('handle-out') || (clickRelX >= (clipRect.width - (clip.transitionOutDuration || 0.8) * this.pixelsPerSecond) && clickRelX <= (clipRect.width - (clip.transitionOutDuration || 0.8) * this.pixelsPerSecond + 12))))) {
+                            action = 'resize-trans-out';
+                            targetEl = wedgeOutHit?.querySelector('.handle-out') || wedgeOutHit || targetEl;
+                        } else if (action === 'resize-trans-in' || (wedgeInHit && (actionTarget?.classList.contains('handle-in') || e.target.classList.contains('handle-in') || (clickRelX >= ((clip.transitionInDuration || 0.8) * this.pixelsPerSecond - 12) && clickRelX <= ((clip.transitionInDuration || 0.8) * this.pixelsPerSecond + 4))))) {
+                            action = 'resize-trans-in';
+                            targetEl = wedgeInHit?.querySelector('.handle-in') || wedgeInHit || targetEl;
                         }
                     }
 
                     // Tool Inspection Actions (Sets active tool state and highlights in inspector)
-                    if (action === 'inspect-transition' || action === 'drag-intermediate-trans' || action === 'resize-intermediate-trans') {
+                    if (action === 'inspect-transition' || action === 'drag-intermediate-trans' || action === 'resize-intermediate-trans' || action === 'resize-trans-in' || action === 'resize-trans-out') {
                         this.selectedClipId = clip.id;
                         onClipSelected(clip);
                         if (window.rpaStudio) {
-                            const isWedgeIn = targetEl.classList.contains('wedge-in');
-                            const isWedgeOut = targetEl.classList.contains('wedge-out');
+                            const isWedgeIn = targetEl.classList.contains('wedge-in') || action === 'resize-trans-in' || targetEl.classList.contains('handle-in');
+                            const isWedgeOut = targetEl.classList.contains('wedge-out') || action === 'resize-trans-out' || targetEl.classList.contains('handle-out');
                             window.rpaStudio.setActiveTimelineTool({
                                 type: 'transition',
                                 transType: isWedgeIn ? 'in' : (isWedgeOut ? 'out' : 'intermediate'),

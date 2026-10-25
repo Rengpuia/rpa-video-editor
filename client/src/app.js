@@ -55,19 +55,43 @@ class RpaStudioApp {
         if (btnRedo) btnRedo.onclick = () => { this.timeline.redo(); this.updateUndoRedoUI(); };
 
         // 3. Timeline Action Buttons
-        document.getElementById('btnAddTrack').onclick = () => {
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.addEventListener('pointerup', () => btn.blur());
+            btn.addEventListener('click', () => btn.blur());
+        });
+
+        document.getElementById('btnAddTrack').onclick = (e) => {
+            if (e?.currentTarget) e.currentTarget.blur();
             const track = this.timeline.addTrack();
             this.renderTimeline();
             this.updateTimelineRuler();
         };
-        document.getElementById('btnSplitClip').onclick = () => this.splitSelectedClip();
+        document.getElementById('btnSplitClip').onclick = (e) => {
+            if (e?.currentTarget) e.currentTarget.blur();
+            this.splitSelectedClip();
+        };
         const btnCopy = document.getElementById('btnCopyClip');
-        if (btnCopy) btnCopy.onclick = () => this.copySelectedClip();
+        if (btnCopy) btnCopy.onclick = (e) => {
+            if (e?.currentTarget) e.currentTarget.blur();
+            this.copySelectedClip();
+        };
         const btnPaste = document.getElementById('btnPasteClip');
-        if (btnPaste) btnPaste.onclick = () => this.pasteClip();
-        document.getElementById('btnCutSelection').onclick = () => this.cutRangeSelection();
-        document.getElementById('btnDeleteClip').onclick = () => this.deleteSelectedClip();
-        document.getElementById('btnAddMarker').onclick = () => this.addMarkerAtPlayhead();
+        if (btnPaste) btnPaste.onclick = (e) => {
+            if (e?.currentTarget) e.currentTarget.blur();
+            this.pasteClip();
+        };
+        document.getElementById('btnCutSelection').onclick = (e) => {
+            if (e?.currentTarget) e.currentTarget.blur();
+            this.cutRangeSelection();
+        };
+        document.getElementById('btnDeleteClip').onclick = (e) => {
+            if (e?.currentTarget) e.currentTarget.blur();
+            this.deleteSelectedClip();
+        };
+        document.getElementById('btnAddMarker').onclick = (e) => {
+            if (e?.currentTarget) e.currentTarget.blur();
+            this.addMarkerAtPlayhead();
+        };
 
         // Native Desktop Close & Unsaved State Interception
         if (window.rpaNative && window.rpaNative.onPromptSaveBeforeClose) {
@@ -1418,6 +1442,20 @@ class RpaStudioApp {
                 }
             };
             rngTransDur.onchange = () => this.timeline.saveSnapshot();
+        }
+        const rngTransOp = document.getElementById('rngTransitionOpacity');
+        const lblTransOp = document.getElementById('lblTransitionOpacity');
+        if (rngTransOp) {
+            rngTransOp.oninput = (e) => {
+                const val = parseInt(e.target.value, 10);
+                if (lblTransOp) lblTransOp.innerText = `${val}%`;
+                const clip = this.timeline.getClip(this.timeline.selectedClipId);
+                if (clip) {
+                    clip.transitionOpacity = val / 100.0;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                }
+            };
+            rngTransOp.onchange = () => this.timeline.saveSnapshot();
         }
         const btnClearTrans = document.getElementById('btnClearTransitions');
         if (btnClearTrans) {
@@ -2802,17 +2840,23 @@ class RpaStudioApp {
                 if (!clip) return;
                 if (!clip.trackPoints) clip.trackPoints = [];
                 const relTime = Math.max(0, Math.min(clip.duration, this.playheadTime - clip.startTime));
-                const currentPt = clip.trackPoint || { x: 0.5, y: 0.5 };
+                const canvas = document.getElementById('previewCanvas');
+                const cw = canvas ? canvas.width : 1920;
+                const ch = canvas ? canvas.height : 1080;
+                const interp = this.compositor.getInterpolatedTrackPoint(clip, relTime, cw, ch);
+                const currentPt = interp ? { x: interp.x / cw, y: interp.y / ch } : (clip.trackPoint || { x: 0.5, y: 0.5 });
                 clip.trackPoints = clip.trackPoints.filter(k => Math.abs(k.time - relTime) > 0.05);
                 clip.trackPoints.push({
                     time: parseFloat(relTime.toFixed(2)),
-                    x: currentPt.x,
-                    y: currentPt.y
+                    x: parseFloat(currentPt.x.toFixed(3)),
+                    y: parseFloat(currentPt.y.toFixed(3))
                 });
                 clip.trackPoints.sort((a, b) => a.time - b.time);
+                clip.trackPoint = { x: parseFloat(currentPt.x.toFixed(3)), y: parseFloat(currentPt.y.toFixed(3)) };
                 clip.trackingMode = 'point';
                 this.timeline.saveSnapshot();
                 this.renderProperties(clip);
+                this.renderTimeline();
                 this.compositor.renderFrame(this.timeline, this.playheadTime);
             };
         }
@@ -3348,9 +3392,11 @@ class RpaStudioApp {
 
         if (preset === 'jump') {
             base.name = 'Jump And Fall';
-            base.in = { style: 'jump', type: 'ltr', movement: 'bounce', direction: 'bottom', bounce: 40, offset: 0.00, duration: 0.8 };
-            base.during = { style: 'jump', type: 'ltr', jump: 60.00, loopTime: 1.00, offset: 0.08, delay: 1.67, loops: 1, loopForever: true };
-            base.out = { style: 'drop', type: 'ltr', movement: 'ease-in-quart', direction: 'bottom', speed: 92, offset: 0.08, duration: 0.8 };
+            base.textUnit = 'all';
+            base.waveDelay = 0.0;
+            base.in = { style: 'jump', type: 'all', movement: 'bounce', direction: 'bottom', bounce: 40, offset: 0.00, duration: 0.8 };
+            base.during = { style: 'jump', type: 'all', jump: 60.00, loopTime: 1.00, offset: 0.00, delay: 1.67, loops: 1, loopForever: true };
+            base.out = { style: 'drop', type: 'all', movement: 'ease-in-quart', direction: 'bottom', speed: 92, offset: 0.00, duration: 0.8 };
         } else if (preset === 'slide' || preset === 'slide-drift' || preset === 'slide-in') {
             base.name = 'Slide & Drift';
             base.in = { style: 'slide', type: 'ltr', movement: 'smooth', direction: 'left', bounce: 50, offset: 0.05, duration: 0.8 };
@@ -3469,6 +3515,7 @@ class RpaStudioApp {
         clip.behavior = type;
         if (type !== 'none') {
             clip.behaviorProps = this.getDefaultBehaviorProps(type);
+            this.seek(clip.startTime + clip.duration / 2);
         } else {
             clip.behaviorProps = null;
         }
@@ -4317,6 +4364,23 @@ class RpaStudioApp {
     seek(time) {
         this.playheadTime = Math.max(0, Math.min(this.timeline.totalDuration, time));
         this.updatePlayheadPosition();
+
+        // If selected clip has manual track points, update inspector position inputs dynamically
+        const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+        if (selClip && ((selClip.trackPoints && selClip.trackPoints.length > 0) || selClip.trackingMode === 'point' || selClip.trackPoint)) {
+            const relTime = Math.max(0, Math.min(selClip.duration, this.playheadTime - selClip.startTime));
+            const canvas = document.getElementById('previewCanvas');
+            const cw = canvas ? canvas.width : 1920;
+            const ch = canvas ? canvas.height : 1080;
+            const pt = this.compositor.getInterpolatedTrackPoint(selClip, relTime, cw, ch);
+            if (pt) {
+                const numX = document.getElementById('numMagTrackX');
+                const numY = document.getElementById('numMagTrackY');
+                if (numX && document.activeElement !== numX) numX.value = Math.round((pt.x / cw) * 100);
+                if (numY && document.activeElement !== numY) numY.value = Math.round((pt.y / ch) * 100);
+            }
+        }
+
         this.compositor.syncMediaPlayback(this.timeline, this.playheadTime, this.isPlaying);
         this.compositor.renderFrame(this.timeline, this.playheadTime, this.isPlaying);
     }
@@ -5151,6 +5215,12 @@ class RpaStudioApp {
         if (rngTransDur) rngTransDur.value = Math.round(transDur * 10);
         const lblTransDur = document.getElementById('lblTransitionDur');
         if (lblTransDur) lblTransDur.innerText = `${transDur.toFixed(1)}s`;
+
+        const transOp = selectedClip.transitionOpacity !== undefined ? Math.round(selectedClip.transitionOpacity * 100) : 100;
+        const rngTransOp = document.getElementById('rngTransitionOpacity');
+        if (rngTransOp) rngTransOp.value = transOp;
+        const lblTransOp = document.getElementById('lblTransitionOpacity');
+        if (lblTransOp) lblTransOp.innerText = `${transOp}%`;
 
         // Intermediate Transitions in Inspector
         const intermediateTransList = document.getElementById('inspectorIntermediateTransitions');
@@ -6284,6 +6354,7 @@ class RpaStudioApp {
             clip.behavior = data.toolName;
             if (data.toolName !== 'none') {
                 clip.behaviorProps = this.getDefaultBehaviorProps(data.toolName);
+                this.seek(clip.startTime + clip.duration / 2);
             } else {
                 clip.behaviorProps = null;
             }
@@ -7457,7 +7528,21 @@ class RpaStudioApp {
                 if (clip) {
                     const normX = Math.max(0, Math.min(1, pt.x / canvas.width));
                     const normY = Math.max(0, Math.min(1, pt.y / canvas.height));
+                    const relTime = Math.max(0, Math.min(clip.duration, this.playheadTime - clip.startTime));
                     clip.trackPoint = { x: parseFloat(normX.toFixed(3)), y: parseFloat(normY.toFixed(3)) };
+                    if (!clip.trackPoints) clip.trackPoints = [];
+                    const existing = clip.trackPoints.find(k => Math.abs(k.time - relTime) <= 0.12);
+                    if (existing) {
+                        existing.x = parseFloat(normX.toFixed(3));
+                        existing.y = parseFloat(normY.toFixed(3));
+                    } else {
+                        clip.trackPoints.push({
+                            time: parseFloat(relTime.toFixed(2)),
+                            x: parseFloat(normX.toFixed(3)),
+                            y: parseFloat(normY.toFixed(3))
+                        });
+                        clip.trackPoints.sort((a, b) => a.time - b.time);
+                    }
                     clip.trackingMode = 'point';
                     this.timeline.saveSnapshot();
                 }
@@ -7468,7 +7553,10 @@ class RpaStudioApp {
                     btnPick.innerText = '🎯 Pick on Canvas';
                     btnPick.style.background = '';
                 }
-                if (clip) this.renderProperties(clip);
+                if (clip) {
+                    this.renderProperties(clip);
+                    this.renderTimeline();
+                }
                 this.compositor.renderFrame(this.timeline, this.playheadTime);
                 return;
             }
