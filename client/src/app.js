@@ -2817,6 +2817,31 @@ class RpaStudioApp {
             };
         }
 
+        const btnUndoMagTrack = document.getElementById('btnUndoMagTrack');
+        if (btnUndoMagTrack) {
+            btnUndoMagTrack.onclick = () => {
+                this.timeline.undo();
+                this.renderTimeline();
+                const cur = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+                this.renderProperties(cur);
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            };
+        }
+
+        const btnRestoreMagTrack = document.getElementById('btnRestoreMagTrack');
+        if (btnRestoreMagTrack) {
+            btnRestoreMagTrack.onclick = () => {
+                const clip = getClip();
+                if (!clip) return;
+                clip.trackPoint = { x: 0.5, y: 0.5 };
+                clip.trackPoints = [];
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+                this.renderProperties(clip);
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+            };
+        }
+
         const selMagTargetMedia = document.getElementById('selMagTargetMedia');
         if (selMagTargetMedia) {
             selMagTargetMedia.onchange = (e) => {
@@ -3175,7 +3200,7 @@ class RpaStudioApp {
     setTimelineZoom(newZoom, anchorClientX = null) {
         const scrollArea = document.getElementById('timelineScrollArea');
         const rngZoom = document.getElementById('rngTimelineZoom');
-        const clampedZoom = Math.max(5, Math.min(250, Math.round(newZoom)));
+        const clampedZoom = Math.max(0.2, Math.min(300, parseFloat(Number(newZoom).toFixed(2))));
 
         if (clampedZoom === this.timeline.pixelsPerSecond) return;
 
@@ -3980,9 +4005,31 @@ class RpaStudioApp {
         const scrollArea = document.getElementById('timelineScrollArea');
         if (!scrollArea || !this.timeline.totalDuration) return;
         const availWidth = scrollArea.clientWidth - 180;
-        if (availWidth > 100) {
-            const fitPps = Math.max(10, Math.min(120, Math.round(availWidth / Math.max(1, this.timeline.totalDuration))));
+        if (availWidth > 50) {
+            const fitPps = Math.max(0.2, Math.min(150, parseFloat((availWidth / Math.max(1, this.timeline.totalDuration)).toFixed(2))));
             this.setTimelineZoom(fitPps);
+        }
+    }
+
+    setActiveTimelineTool(toolInfo, el = null) {
+        this.activeTimelineTool = toolInfo;
+        document.querySelectorAll('.active-tool').forEach(elem => elem.classList.remove('active-tool'));
+        if (el) {
+            el.classList.add('active-tool');
+        }
+    }
+
+    deleteActiveTimelineTool() {
+        if (!this.activeTimelineTool) return;
+        const tool = this.activeTimelineTool;
+        const deleted = this.timeline.deleteTimelineTool(tool);
+        if (deleted) {
+            this.activeTimelineTool = null;
+            this.renderTimeline();
+            const cur = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+            this.renderProperties(cur);
+            this.compositor.renderFrame(this.timeline, this.playheadTime);
+            this.markDirty(true);
         }
     }
 
@@ -3990,11 +4037,17 @@ class RpaStudioApp {
         const menu = document.getElementById('timelineContextMenu');
         if (!menu) return;
 
-        window.addEventListener('click', (e) => {
+        // Dismiss context menu when clicking outside anywhere using capture phase
+        window.addEventListener('pointerdown', (e) => {
             if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
                 this.hideTimelineContextMenu();
             }
-        });
+        }, true);
+        window.addEventListener('contextmenu', (e) => {
+            if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
+                this.hideTimelineContextMenu();
+            }
+        }, true);
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !menu.classList.contains('hidden')) {
                 this.hideTimelineContextMenu();
@@ -4011,6 +4064,23 @@ class RpaStudioApp {
             this.hideTimelineContextMenu();
 
             switch (action) {
+                case 'delete-active-tool':
+                    this.deleteActiveTimelineTool();
+                    break;
+                case 'inspect-active-tool':
+                    if (this.activeTimelineTool) {
+                        const t = this.activeTimelineTool;
+                        if (t.type === 'behavior') this.focusInspectorSection('sectionBehaviors');
+                        else if (t.type === 'fx') this.focusInspectorSection('sectionVisualEffects', t.fxKey);
+                        else if (t.type === 'transition') this.focusInspectorSection('sectionTransitions');
+                        else if (t.type === 'trackpoint') this.focusInspectorSection('sectionMagnifyProps');
+                        else if (t.type === 'anim-arrow') {
+                            const c = this.timeline.getClip(t.clipId);
+                            const anim = c?.animations?.find(a => a.id === t.animId);
+                            if (c && anim) this.inspectAnimation(c, anim);
+                        }
+                    }
+                    break;
                 case 'split-clip':
                     if (targetClip) {
                         this.splitSelectedClip();
@@ -4148,15 +4218,29 @@ class RpaStudioApp {
         this.contextMenuTargetClip = null;
         this.contextMenuTargetTrack = null;
 
+        const grpTool = document.getElementById('ctxGroupTool');
         const grpClip = document.getElementById('ctxGroupClip');
         const grpTrack = document.getElementById('ctxGroupTrack');
         const grpRuler = document.getElementById('ctxGroupRuler');
 
+        if (grpTool) grpTool.style.display = (contextType === 'tool') ? 'block' : 'none';
         if (grpClip) grpClip.style.display = (contextType === 'clip') ? 'block' : 'none';
         if (grpTrack) grpTrack.style.display = (contextType === 'track') ? 'block' : 'none';
         if (grpRuler) grpRuler.style.display = (contextType === 'ruler') ? 'block' : 'none';
 
-        if (contextType === 'clip' && targetData) {
+        if (contextType === 'tool' && targetData) {
+            this.activeTimelineTool = targetData;
+            const lblDel = document.getElementById('ctxLabelDeleteTool');
+            const lblInsp = document.getElementById('ctxLabelInspectTool');
+            let toolName = 'Applied Tool';
+            if (targetData.type === 'behavior') toolName = 'Behavior';
+            else if (targetData.type === 'fx') toolName = `Visual Effect (${targetData.fxKey || ''})`;
+            else if (targetData.type === 'transition') toolName = `Transition (${targetData.transType || ''})`;
+            else if (targetData.type === 'anim-arrow') toolName = 'Animation Keyframe';
+            else if (targetData.type === 'trackpoint') toolName = 'Track Point';
+            if (lblDel) lblDel.innerText = `Delete ${toolName}`;
+            if (lblInsp) lblInsp.innerText = `Inspect ${toolName} in Properties`;
+        } else if (contextType === 'clip' && targetData) {
             this.contextMenuTargetClip = targetData;
             const isVideo = targetData.type === 'video';
             const isVisual = targetData.type === 'video' || targetData.type === 'image' || targetData.type === 'callout';
@@ -4284,12 +4368,17 @@ class RpaStudioApp {
         if (tracksContainer) tracksContainer.style.width = `${minWidth}px`;
 
         let stepSec = 1;
-        if (this.timeline.pixelsPerSecond >= 80) stepSec = 1;
-        else if (this.timeline.pixelsPerSecond >= 40) stepSec = 2;
-        else if (this.timeline.pixelsPerSecond >= 20) stepSec = 5;
-        else if (this.timeline.pixelsPerSecond >= 10) stepSec = 10;
-        else if (this.timeline.pixelsPerSecond >= 6) stepSec = 30;
-        else stepSec = 60;
+        const pps = this.timeline.pixelsPerSecond;
+        if (pps >= 100) stepSec = 1;
+        else if (pps >= 50) stepSec = 2;
+        else if (pps >= 25) stepSec = 5;
+        else if (pps >= 12) stepSec = 10;
+        else if (pps >= 6) stepSec = 30;
+        else if (pps >= 3) stepSec = 60;
+        else if (pps >= 1.5) stepSec = 120;
+        else if (pps >= 0.8) stepSec = 300;
+        else if (pps >= 0.4) stepSec = 600;
+        else stepSec = 1800;
 
         const fragment = document.createDocumentFragment();
 
@@ -4302,9 +4391,18 @@ class RpaStudioApp {
             const label = document.createElement('div');
             label.className = 'ruler-label';
             label.style.left = `${left}px`;
-            const m = Math.floor(t / 60);
-            const s = Math.round(t % 60);
-            label.innerText = t >= 60 ? (s === 0 ? `${m}m` : `${m}m ${s}s`) : `${t}s`;
+            if (t >= 3600) {
+                const h = Math.floor(t / 3600);
+                const m = Math.floor((t % 3600) / 60);
+                const s = Math.round(t % 60);
+                label.innerText = (m === 0 && s === 0) ? `${h}h` : (s === 0 ? `${h}h ${m}m` : `${h}h ${m}m ${s}s`);
+            } else if (t >= 60) {
+                const m = Math.floor(t / 60);
+                const s = Math.round(t % 60);
+                label.innerText = s === 0 ? `${m}m` : `${m}m ${s}s`;
+            } else {
+                label.innerText = `${t}s`;
+            }
 
             fragment.appendChild(tick);
             fragment.appendChild(label);
@@ -4534,6 +4632,7 @@ class RpaStudioApp {
     }
 
     openCanvasInlineEditor(clip) {
+        const wrapper = document.getElementById('canvasTextEditorWrapper');
         const editor = document.getElementById('canvasInlineTextEditor');
         const container = document.getElementById('canvasContainer');
         const canvas = this.compositor ? this.compositor.canvas : null;
@@ -4546,27 +4645,130 @@ class RpaStudioApp {
         const scaleX = canvasRect.width / canvas.width;
         const scaleY = canvasRect.height / canvas.height;
 
-        const left = (canvasRect.left - containerRect.left) + (bounds.cx - bounds.width / 2) * scaleX;
-        const top = (canvasRect.top - containerRect.top) + (bounds.cy - bounds.height / 2) * scaleY;
-        const width = Math.max(140, bounds.width * scaleX);
-        const height = Math.max(50, bounds.height * scaleY);
+        let left = (canvasRect.left - containerRect.left) + (bounds.cx - bounds.width / 2) * scaleX;
+        let top = (canvasRect.top - containerRect.top) + (bounds.cy - bounds.height / 2) * scaleY;
+        let width = Math.max(140, bounds.width * scaleX);
+        let height = Math.max(50, bounds.height * scaleY);
 
-        editor.style.left = `${Math.round(left)}px`;
-        editor.style.top = `${Math.round(top)}px`;
-        editor.style.width = `${Math.round(width)}px`;
-        editor.style.height = `${Math.round(height)}px`;
+        if (wrapper) {
+            wrapper.style.left = `${Math.round(left)}px`;
+            wrapper.style.top = `${Math.round(top)}px`;
+            wrapper.style.width = `${Math.round(width)}px`;
+            wrapper.style.height = `${Math.round(height)}px`;
+            wrapper.style.transform = `rotate(${bounds.rotation || 0}deg)`;
+            wrapper.style.transformOrigin = 'center center';
+            wrapper.classList.remove('hidden');
+        }
+
+        editor.style.width = '100%';
+        editor.style.height = '100%';
         editor.style.fontSize = `${Math.max(14, Math.round((clip.fontSize || 28) * scaleY))}px`;
         editor.style.fontFamily = clip.fontFamily || "'Inter', sans-serif";
         editor.style.fontWeight = clip.fontWeight || 'bold';
         editor.style.color = clip.color || '#ffffff';
         editor.style.textAlign = 'center';
-        editor.style.transform = `rotate(${bounds.rotation || 0}deg)`;
-        editor.style.transformOrigin = 'center center';
 
         editor.value = clip.text !== undefined ? clip.text : '';
         editor.classList.remove('hidden');
         editor.focus();
         editor.select();
+
+        // 4 Corner & 4 Edge Free-Form Resize Handles
+        if (wrapper && !wrapper.dataset.handlesBound) {
+            wrapper.dataset.handlesBound = 'true';
+            let isResizing = false;
+            let resizeHandle = null;
+            let startW = 0, startH = 0, startL = 0, startT = 0, startClientX = 0, startClientY = 0, startFSize = 28;
+
+            const onPointerDown = (e) => {
+                const handle = e.target.closest('.text-corner-handle, .text-edge-handle');
+                if (!handle) return;
+                e.preventDefault();
+                e.stopPropagation();
+                isResizing = true;
+                resizeHandle = handle.dataset.corner || handle.dataset.edge;
+                startClientX = e.clientX;
+                startClientY = e.clientY;
+                startW = parseFloat(wrapper.style.width) || 140;
+                startH = parseFloat(wrapper.style.height) || 50;
+                startL = parseFloat(wrapper.style.left) || 0;
+                startT = parseFloat(wrapper.style.top) || 0;
+                startFSize = clip.fontSize || 28;
+
+                const onPointerMove = (ev) => {
+                    if (!isResizing) return;
+                    const dx = ev.clientX - startClientX;
+                    const dy = ev.clientY - startClientY;
+
+                    let curW = startW;
+                    let curH = startH;
+                    let curL = startL;
+                    let curT = startT;
+
+                    if (resizeHandle === 'se') {
+                        curW = Math.max(80, startW + dx);
+                        curH = Math.max(30, startH + dy);
+                    } else if (resizeHandle === 'sw') {
+                        curW = Math.max(80, startW - dx);
+                        curH = Math.max(30, startH + dy);
+                        curL = startL + (startW - curW);
+                    } else if (resizeHandle === 'ne') {
+                        curW = Math.max(80, startW + dx);
+                        curH = Math.max(30, startH - dy);
+                        curT = startT + (startH - curH);
+                    } else if (resizeHandle === 'nw') {
+                        curW = Math.max(80, startW - dx);
+                        curH = Math.max(30, startH - dy);
+                        curL = startL + (startW - curW);
+                        curT = startT + (startH - curH);
+                    } else if (resizeHandle === 'e') {
+                        curW = Math.max(80, startW + dx);
+                    } else if (resizeHandle === 'w') {
+                        curW = Math.max(80, startW - dx);
+                        curL = startL + (startW - curW);
+                    } else if (resizeHandle === 's') {
+                        curH = Math.max(30, startH + dy);
+                    } else if (resizeHandle === 'n') {
+                        curH = Math.max(30, startH - dy);
+                        curT = startT + (startH - curH);
+                    }
+
+                    wrapper.style.width = `${Math.round(curW)}px`;
+                    wrapper.style.height = `${Math.round(curH)}px`;
+                    wrapper.style.left = `${Math.round(curL)}px`;
+                    wrapper.style.top = `${Math.round(curT)}px`;
+
+                    clip.boxWidth = Math.round(curW / scaleX);
+                    clip.boxHeight = Math.round(curH / scaleY);
+
+                    // Proportional font scaling when dragging corner handles
+                    if (['nw', 'ne', 'se', 'sw'].includes(resizeHandle)) {
+                        const hRatio = curH / startH;
+                        const newF = Math.max(10, Math.min(240, Math.round(startFSize * hRatio)));
+                        clip.fontSize = newF;
+                        editor.style.fontSize = `${Math.max(14, Math.round(newF * scaleY))}px`;
+                        const propFont = document.getElementById('propFontSize');
+                        if (propFont) propFont.value = newF;
+                    }
+
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                };
+
+                const onPointerUp = () => {
+                    if (isResizing) {
+                        isResizing = false;
+                        window.removeEventListener('pointermove', onPointerMove);
+                        window.removeEventListener('pointerup', onPointerUp);
+                        this.timeline.saveSnapshot();
+                    }
+                };
+
+                window.addEventListener('pointermove', onPointerMove);
+                window.addEventListener('pointerup', onPointerUp);
+            };
+
+            wrapper.addEventListener('pointerdown', onPointerDown);
+        }
 
         const updateWordSelectionFrom = (inputEl) => {
             if (!inputEl) return;
@@ -4603,6 +4805,9 @@ class RpaStudioApp {
         editor.onpointerup = () => updateWordSelectionFrom(editor);
 
         const closeEditor = () => {
+            if (wrapper && !wrapper.classList.contains('hidden')) {
+                wrapper.classList.add('hidden');
+            }
             if (!editor.classList.contains('hidden')) {
                 editor.classList.add('hidden');
                 this.timeline.saveSnapshot();
@@ -5247,7 +5452,7 @@ class RpaStudioApp {
         this.updateZoomMonitorUI(selectedClip);
     }
 
-    focusInspectorSection(sectionId) {
+    focusInspectorSection(sectionId, optKey = null) {
         if (sectionId === 'tabAnimations' || sectionId === 'sectionAnimations') {
             const animTabBtn = document.querySelector('.sidebar-tab[data-tab="animations"]');
             if (animTabBtn) animTabBtn.click();
@@ -5267,15 +5472,57 @@ class RpaStudioApp {
             if (btnExpandInspector) btnExpandInspector.classList.add('hidden');
         }
 
+        // Map section to category pill to isolate properties and hide inactive clutter
+        const sectionCatMap = {
+            'sectionBehaviors': 'behaviors',
+            'sectionVisualEffects': 'visual',
+            'sectionTransitions': 'transitions',
+            'sectionTransitionProps': 'transitions',
+            'sectionMagnifyProps': 'magnify',
+            'sectionAnimationProps': 'animations',
+            'sectionAudioProps': 'audio',
+            'sectionCalloutProps': 'callout',
+            'sectionTransformProps': 'transform',
+            'sectionTimingProps': 'timing'
+        };
+
+        const targetCat = sectionCatMap[sectionId];
+        if (targetCat) {
+            this.activeInspectorCategory = targetCat;
+            document.querySelectorAll('.cat-pill').forEach(pill => {
+                pill.classList.toggle('active', pill.dataset.cat === targetCat);
+            });
+            const selSub = document.getElementById('selPropertiesSubMenu');
+            if (selSub) selSub.value = targetCat;
+            const curClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+            if (curClip) this.renderProperties(curClip);
+        }
+
         const sec = document.getElementById(sectionId);
         if (sec) {
+            if (sec.classList.contains('collapsed')) {
+                sec.classList.remove('collapsed');
+                const chv = sec.querySelector('.accordion-chevron');
+                if (chv) chv.innerText = '▼';
+            }
             sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             sec.classList.remove('inspector-section-highlight');
-            void sec.offsetWidth; // Force reflow to re-trigger animation
+            void sec.offsetWidth; // Force reflow to re-trigger luminous highlight animation
             sec.classList.add('inspector-section-highlight');
             setTimeout(() => {
                 sec.classList.remove('inspector-section-highlight');
             }, 1800);
+
+            if (optKey) {
+                const subTarget = sec.querySelector(`[data-fx="${optKey}"]`) || sec.querySelector(`[data-tool="${optKey}"]`) || sec.querySelector(`#chk${optKey.charAt(0).toUpperCase() + optKey.slice(1)}`);
+                if (subTarget) {
+                    const row = subTarget.closest('.control-group') || subTarget.closest('.fx-row') || subTarget;
+                    row.classList.remove('inspector-section-highlight');
+                    void row.offsetWidth;
+                    row.classList.add('inspector-section-highlight');
+                    setTimeout(() => row.classList.remove('inspector-section-highlight'), 1800);
+                }
+            }
         }
     }
 
@@ -5397,7 +5644,9 @@ class RpaStudioApp {
                 e.preventDefault();
                 this.cutRangeSelection();
             } else if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (this.timeline.selectedAnimationId) {
+                if (this.activeTimelineTool) {
+                    this.deleteActiveTimelineTool();
+                } else if (this.timeline.selectedAnimationId) {
                     this.deleteSelectedAnimation();
                 } else {
                     this.deleteSelectedClip();
@@ -5589,6 +5838,26 @@ class RpaStudioApp {
         if (!modal) return;
         modal.classList.remove('hidden');
 
+        // Wire dynamic bitrate container
+        const selBitratePreset = document.getElementById('selExportBitratePreset');
+        const customBitrateContainer = document.getElementById('customBitrateContainer');
+        if (selBitratePreset && customBitrateContainer) {
+            selBitratePreset.onchange = () => {
+                customBitrateContainer.style.display = selBitratePreset.value === 'custom' ? 'block' : 'none';
+            };
+            customBitrateContainer.style.display = selBitratePreset.value === 'custom' ? 'block' : 'none';
+        }
+
+        // Wire format change for profile options
+        const selFormat = document.getElementById('selExportFormat');
+        const grpProfile = document.getElementById('groupExportProfile');
+        if (selFormat && grpProfile) {
+            selFormat.onchange = () => {
+                grpProfile.style.display = selFormat.value === 'mp4' ? 'block' : 'none';
+            };
+            grpProfile.style.display = selFormat.value === 'mp4' ? 'block' : 'none';
+        }
+
         // Auto-detect timeline content duration to show user exact export boundaries
         const range = this.timeline.getExportRange ? this.timeline.getExportRange() : { start: 0, end: this.timeline.totalDuration, duration: this.timeline.totalDuration, isCustomRange: false };
         const lblDuration = document.getElementById('lblExportDetectedDuration');
@@ -5633,9 +5902,25 @@ class RpaStudioApp {
             height = parseInt(parts[1], 10);
         }
 
-        const fps = parseInt(document.getElementById('selExportFps').value, 10);
-        const bitrate = parseInt(document.getElementById('selExportBitrate').value, 10);
-        const format = document.getElementById('selExportFormat').value;
+        const fps = parseInt(document.getElementById('selExportFps')?.value || '30', 10);
+        
+        let bitrate = 8000000;
+        const bitratePreset = document.getElementById('selExportBitratePreset')?.value;
+        if (bitratePreset === 'custom') {
+            const customMbps = parseFloat(document.getElementById('numExportCustomBitrate')?.value || '8');
+            bitrate = Math.max(500000, Math.min(100000000, Math.round(customMbps * 1000000)));
+        } else if (bitratePreset) {
+            bitrate = parseInt(bitratePreset, 10);
+        } else if (document.getElementById('selExportBitrate')) {
+            bitrate = parseInt(document.getElementById('selExportBitrate').value, 10);
+        }
+
+        const format = document.getElementById('selExportFormat')?.value || 'webm';
+        const engine = document.getElementById('selExportEncodingEngine')?.value || 'software';
+        const profile = document.getElementById('selExportProfile')?.value || 'high';
+        const keyframeInterval = parseFloat(document.getElementById('selExportKeyframeInterval')?.value || '1.0');
+
+        const isNativeApp = Boolean(window.rpaNative && window.rpaNative.saveExportedFile);
 
         const progressContainer = document.getElementById('exportProgressBarContainer');
         const progressBar = document.getElementById('exportProgressBar');
@@ -5656,17 +5941,21 @@ class RpaStudioApp {
                     fps,
                     bitrate,
                     format,
+                    engine,
+                    profile,
+                    keyframeInterval,
+                    skipBrowserDownload: isNativeApp,
                     startTime: range.start,
                     endTime: range.end
                 },
                 (pct) => {
                     progressBar.style.width = `${Math.floor(pct)}%`;
-                    statusLabel.innerText = `Rendering ${width}x${height} (${fps}fps): ${Math.floor(pct)}% [0s - ${range.end.toFixed(1)}s]`;
+                    statusLabel.innerText = `Rendering ${width}x${height} (${fps}fps, ${engine}): ${Math.floor(pct)}% [0s - ${range.end.toFixed(1)}s]`;
                 }
             );
 
             const chosenFolder = document.getElementById('txtExportOutputFolder')?.value?.trim();
-            if (window.rpaNative && window.rpaNative.saveExportedFile && exportResult && exportResult.blob) {
+            if (isNativeApp && exportResult && exportResult.blob) {
                 const arrayBuffer = await exportResult.blob.arrayBuffer();
                 const ext = format === 'mp4' ? 'mp4' : 'webm';
                 const filename = `RPA_Video_${width}x${height}_${Date.now()}.${ext}`;
@@ -5680,7 +5969,7 @@ class RpaStudioApp {
                 } else {
                     alert(`Full ${width}x${height} video rendered!`);
                 }
-            } else {
+            } else if (!isNativeApp) {
                 alert(`Full ${width}x${height} video successfully rendered and downloaded!`);
             }
             document.getElementById('exportModal').classList.add('hidden');
@@ -5689,7 +5978,7 @@ class RpaStudioApp {
         } finally {
             progressContainer.style.display = 'none';
             btnExec.disabled = false;
-            btnExec.innerText = 'Render & Download';
+            btnExec.innerText = 'Render & Export Full Video';
         }
     }
 
@@ -7197,6 +7486,22 @@ class RpaStudioApp {
             if (this.compositor.activeCanvasTool === 'pointer') {
                 let selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
 
+                // Check if clicked directly on manual track point reticle
+                if (selClip && (selClip.trackingMode === 'point' || selClip.trackPoint || (selClip.trackPoints && selClip.trackPoints.length > 0))) {
+                    const relTime = Math.max(0, Math.min(selClip.duration, this.playheadTime - selClip.startTime));
+                    const tp = this.compositor.getInterpolatedTrackPoint(selClip, relTime, canvas.width, canvas.height);
+                    if (tp) {
+                        const crosshairX = tp.x + (selClip.xOffset || 0);
+                        const crosshairY = tp.y + (selClip.yOffset || 0);
+                        if (distance(pt.x, pt.y, crosshairX, crosshairY) <= 24) {
+                            isInteracting = true;
+                            interactionMode = 'trackpoint';
+                            canvas.style.cursor = 'crosshair';
+                            return;
+                        }
+                    }
+                }
+
                 // Check if clicked on gizmo of selected clip
                 if (selClip) {
                     const b = this.compositor.getClipCanvasBounds(selClip);
@@ -7348,6 +7653,39 @@ class RpaStudioApp {
 
             const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
             if (!selClip) return;
+
+            if (interactionMode === 'trackpoint') {
+                const normX = Math.max(0, Math.min(1, pt.x / canvas.width));
+                const normY = Math.max(0, Math.min(1, pt.y / canvas.height));
+                const relTime = Math.max(0, Math.min(selClip.duration, this.playheadTime - selClip.startTime));
+
+                selClip.trackPoint = { x: parseFloat(normX.toFixed(3)), y: parseFloat(normY.toFixed(3)) };
+                selClip.trackingMode = 'point';
+
+                if (selClip.trackPoints && selClip.trackPoints.length > 0) {
+                    let existing = selClip.trackPoints.find(k => Math.abs(k.time - relTime) <= 0.12);
+                    if (existing) {
+                        existing.x = parseFloat(normX.toFixed(3));
+                        existing.y = parseFloat(normY.toFixed(3));
+                    } else {
+                        selClip.trackPoints.push({
+                            time: parseFloat(relTime.toFixed(2)),
+                            x: parseFloat(normX.toFixed(3)),
+                            y: parseFloat(normY.toFixed(3))
+                        });
+                        selClip.trackPoints.sort((a, b) => a.time - b.time);
+                    }
+                }
+
+                const numX = document.getElementById('numMagTrackX');
+                const numY = document.getElementById('numMagTrackY');
+                if (numX) numX.value = Math.round(normX * 100);
+                if (numY) numY.value = Math.round(normY * 100);
+
+                this.renderTimeline();
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                return;
+            }
 
             if (interactionMode === 'crop') {
                 if (!selClip.crop) selClip.crop = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -7518,6 +7856,31 @@ class RpaStudioApp {
                 this.markDirty(true);
             }
         };
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (isInteracting) return;
+            const pt = getCanvasPoint(e);
+            const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+            if (selClip && (selClip.trackingMode === 'point' || selClip.trackPoint || (selClip.trackPoints && selClip.trackPoints.length > 0))) {
+                const relTime = Math.max(0, Math.min(selClip.duration, this.playheadTime - selClip.startTime));
+                const tp = this.compositor.getInterpolatedTrackPoint(selClip, relTime, canvas.width, canvas.height);
+                if (tp) {
+                    const crosshairX = tp.x + (selClip.xOffset || 0);
+                    const crosshairY = tp.y + (selClip.yOffset || 0);
+                    if (distance(pt.x, pt.y, crosshairX, crosshairY) <= 24) {
+                        canvas.style.cursor = 'crosshair';
+                        return;
+                    }
+                }
+            }
+            if (this.compositor.activeCanvasTool === 'hand') {
+                canvas.style.cursor = 'grab';
+            } else if (this.compositor.activeCanvasTool === 'crop') {
+                canvas.style.cursor = 'crosshair';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+        });
 
         canvas.addEventListener('dblclick', (e) => {
             if (this.compositor.activeCanvasTool === 'hand') {

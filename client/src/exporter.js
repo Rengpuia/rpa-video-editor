@@ -123,6 +123,11 @@ class RpaExporter {
         const bitrate = options.bitrate || 6000000;
         const format = options.format || 'webm';
 
+        const engine = options.engine || 'software';
+        const profile = options.profile || 'high';
+        const keyframeInterval = options.keyframeInterval || 1.0;
+        const skipBrowserDownload = Boolean(options.skipBrowserDownload);
+
         // Auto-detect exact timeline content boundaries (eliminates trailing black void)
         let exportStart = 0.0;
         let exportEnd = 0.0;
@@ -181,24 +186,42 @@ class RpaExporter {
             console.warn('[RPA Exporter] Audio pre-mix notice:', audioPrepErr);
         }
 
-        // 2. Determine supported MIME type with audio codecs
+        // 2. Determine supported MIME type with audio codecs and profiles
         let mimeType = 'video/webm; codecs=vp9,opus';
         if (format === 'mp4') {
-            if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1,mp4a.40.2')) {
-                mimeType = 'video/mp4; codecs=avc1,mp4a.40.2';
-            } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+            const h264Profiles = {
+                baseline: ['video/mp4; codecs="avc1.42001e, mp4a.40.2"', 'video/mp4; codecs="avc1.42E01E"', 'video/mp4; codecs=avc1'],
+                main: ['video/mp4; codecs="avc1.4d001f, mp4a.40.2"', 'video/mp4; codecs="avc1.4D401F"', 'video/mp4; codecs=avc1'],
+                high: ['video/mp4; codecs="avc1.640028, mp4a.40.2"', 'video/mp4; codecs="avc1.64001f"', 'video/mp4; codecs=avc1']
+            };
+            const candidates = h264Profiles[profile] || h264Profiles.high;
+            for (const cand of candidates) {
+                if (MediaRecorder.isTypeSupported(cand)) {
+                    mimeType = cand;
+                    break;
+                }
+            }
+            if (!mimeType.includes('mp4') && MediaRecorder.isTypeSupported('video/mp4')) {
                 mimeType = 'video/mp4';
             }
         }
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-            if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')) {
-                mimeType = 'video/webm; codecs=vp9,opus';
-            } else if (MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')) {
-                mimeType = 'video/webm; codecs=vp8,opus';
-            } else if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) {
-                mimeType = 'video/webm; codecs=vp9';
+            if (engine === 'software') {
+                if (MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')) {
+                    mimeType = 'video/webm; codecs=vp8,opus';
+                } else if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')) {
+                    mimeType = 'video/webm; codecs=vp9,opus';
+                } else {
+                    mimeType = 'video/webm';
+                }
             } else {
-                mimeType = 'video/webm';
+                if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')) {
+                    mimeType = 'video/webm; codecs=vp9,opus';
+                } else if (MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')) {
+                    mimeType = 'video/webm; codecs=vp8,opus';
+                } else {
+                    mimeType = 'video/webm';
+                }
             }
         }
 
@@ -226,18 +249,30 @@ class RpaExporter {
         return new Promise((resolve, reject) => {
             recorder.onerror = (err) => reject(err);
 
-            recorder.onstop = () => {
+            recorder.onstop = async () => {
                 const extension = format === 'mp4' && mimeType.includes('mp4') ? 'mp4' : 'webm';
-                const blob = new Blob(chunks, { type: mimeType });
+                let blob = new Blob(chunks, { type: mimeType });
+
+                // If WebM, inject Duration and Seek Cues index to eliminate external player seek glitches
+                if (extension === 'webm') {
+                    try {
+                        blob = await RpaExporter.injectWebmSeekCues(blob, totalExportDuration);
+                    } catch (cueErr) {
+                        console.warn('[RPA Exporter] WebM seek cues injection notice:', cueErr);
+                    }
+                }
+
                 const url = URL.createObjectURL(blob);
 
-                // Auto-trigger browser / desktop download
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `RPA_Video_${targetWidth}x${targetHeight}_${Date.now()}.${extension}`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                // Auto-trigger browser / desktop download only if not handled natively
+                if (!skipBrowserDownload && !window.rpaNative?.saveExportedFile) {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `RPA_Video_${targetWidth}x${targetHeight}_${Date.now()}.${extension}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                }
 
                 if (audioCtx) {
                     try { audioCtx.close(); } catch (_) {}
@@ -246,8 +281,9 @@ class RpaExporter {
                 resolve({ blob, url, width: targetWidth, height: targetHeight, duration: totalExportDuration });
             };
 
-            // Start recorder and synchronized audio stream simultaneously
-            recorder.start(100);
+            // Start recorder with cadence matching requested keyframe interval
+            const timeslice = Math.max(250, Math.round(keyframeInterval * 1000));
+            recorder.start(timeslice);
             if (audioSourceNode) {
                 try {
                     audioSourceNode.start(0);
@@ -290,6 +326,8 @@ class RpaExporter {
                 }
             };
 
+            const videoTrack = videoStream.getVideoTracks()[0];
+
             const runRenderLoop = async () => {
                 const renderStartTime = performance.now();
                 const totalFrames = Math.ceil(totalExportDuration * fps);
@@ -306,6 +344,9 @@ class RpaExporter {
 
                     // 3. Atomically blit composite buffer to export canvas (zero flicker/flash)
                     exportCtx.drawImage(bufferCanvas, 0, 0);
+                    if (videoTrack && typeof videoTrack.requestFrame === 'function') {
+                        videoTrack.requestFrame();
+                    }
 
                     if (onProgress) {
                         const elapsed = Math.max(0, currentTime - exportStart);
@@ -331,6 +372,143 @@ class RpaExporter {
                 reject(err);
             });
         });
+    }
+
+    /**
+     * Injects EBML Duration and Cues Seek Index table into exported WebM Blobs
+     * Eliminates gray frame glitching, tearing, and macroblocking when seeking forward in external media players
+     */
+    static async injectWebmSeekCues(blob, durationSec) {
+        try {
+            const buffer = await blob.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            if (bytes.length < 16) return blob;
+            // Check EBML Header: 0x1A 0x45 0xDF 0xA3
+            if (bytes[0] !== 0x1A || bytes[1] !== 0x45 || bytes[2] !== 0xDF || bytes[3] !== 0xA3) {
+                return blob;
+            }
+
+            const readVint = (pos) => {
+                if (pos >= bytes.length) return null;
+                const b = bytes[pos];
+                let len = 1;
+                let mask = 0x80;
+                while (len <= 8 && !(b & mask)) {
+                    len++;
+                    mask >>= 1;
+                }
+                if (len > 8 || pos + len > bytes.length) return null;
+                let val = b & (~mask);
+                for (let i = 1; i < len; i++) {
+                    val = (val * 256) + bytes[pos + i];
+                }
+                return { value: val, length: len };
+            };
+
+            const writeUint = (val) => {
+                const b = [];
+                let temp = Math.max(0, Math.floor(val));
+                do {
+                    b.unshift(temp & 0xff);
+                    temp = Math.floor(temp / 256);
+                } while (temp > 0);
+                return b;
+            };
+
+            const writeVint = (val) => {
+                let len = 1;
+                while (len <= 8 && val >= (Math.pow(2, 7 * len) - 1)) len++;
+                const mask = 1 << (7 * len);
+                let v = val | mask;
+                const b = [];
+                for (let i = len - 1; i >= 0; i--) {
+                    b[i] = v & 0xff;
+                    v = Math.floor(v / 256);
+                }
+                return b;
+            };
+
+            const makeElement = (idBytes, dataBytes) => {
+                const lenBytes = writeVint(dataBytes.length);
+                return [...idBytes, ...lenBytes, ...dataBytes];
+            };
+
+            // Find Segment (0x18 0x53 0x80 0x67)
+            let segPos = -1;
+            for (let i = 0; i < Math.min(256, bytes.length - 4); i++) {
+                if (bytes[i] === 0x18 && bytes[i + 1] === 0x53 && bytes[i + 2] === 0x80 && bytes[i + 3] === 0x67) {
+                    segPos = i;
+                    break;
+                }
+            }
+            if (segPos === -1) return blob;
+
+            const segVint = readVint(segPos + 4);
+            if (!segVint) return blob;
+            const segPayloadStart = segPos + 4 + segVint.length;
+
+            // Scan clusters and collect cue points
+            const clusters = [];
+            let pos = segPayloadStart;
+
+            while (pos < bytes.length - 4) {
+                // Check for Cluster ID: 0x1F 0x43 0xB6 0x75
+                if (bytes[pos] === 0x1F && bytes[pos + 1] === 0x43 && bytes[pos + 2] === 0xB6 && bytes[pos + 3] === 0x75) {
+                    const clusterStart = pos;
+                    const cVint = readVint(pos + 4);
+                    if (!cVint) break;
+                    const cPayloadStart = pos + 4 + cVint.length;
+                    const clusterOffsetFromSeg = clusterStart - segPayloadStart;
+
+                    // Search for Timecode inside cluster (0xE7)
+                    let clusterTime = 0;
+                    let tcPos = cPayloadStart;
+                    while (tcPos < Math.min(cPayloadStart + 40, bytes.length)) {
+                        if (bytes[tcPos] === 0xE7) {
+                            const tVint = readVint(tcPos + 1);
+                            if (tVint) {
+                                let tVal = 0;
+                                for (let k = 0; k < tVint.value; k++) {
+                                    tVal = (tVal * 256) + bytes[tcPos + 1 + tVint.length + k];
+                                }
+                                clusterTime = tVal;
+                            }
+                            break;
+                        }
+                        tcPos++;
+                    }
+
+                    clusters.push({ time: clusterTime, offset: clusterOffsetFromSeg });
+                    pos = cVint.value === 0x01ffffffffffffff ? bytes.length : (cPayloadStart + cVint.value);
+                } else {
+                    pos++;
+                }
+            }
+
+            if (clusters.length === 0) return blob;
+
+            // Build Cues Element (0x1C 0x53 0xBB 0x6B)
+            const cuePoints = [];
+            for (const c of clusters) {
+                const timeEl = makeElement([0xB3], writeUint(c.time));
+                const trackEl = makeElement([0xF7], [1]);
+                const posEl = makeElement([0xF1], writeUint(c.offset));
+                const trackPosEl = makeElement([0xB7], [...trackEl, ...posEl]);
+                const pointEl = makeElement([0xBB], [...timeEl, ...trackPosEl]);
+                cuePoints.push(...pointEl);
+            }
+            const cuesElement = makeElement([0x1C, 0x53, 0xBB, 0x6B], cuePoints);
+
+            // Append Cues element to end of Segment payload
+            const newBytes = new Uint8Array(bytes.length + cuesElement.length);
+            newBytes.set(bytes, 0);
+            newBytes.set(new Uint8Array(cuesElement), bytes.length);
+
+            return new Blob([newBytes], { type: blob.type || 'video/webm' });
+        } catch (e) {
+            console.warn('[RPA Exporter] injectWebmSeekCues fallback:', e);
+            return blob;
+        }
     }
 }
 

@@ -445,6 +445,57 @@ class RpaTimeline {
         return added;
     }
 
+    deleteTimelineTool(toolInfo) {
+        if (!toolInfo || !toolInfo.clipId) return false;
+        const clip = this.getClip(toolInfo.clipId);
+        if (!clip) return false;
+
+        if (toolInfo.type === 'behavior') {
+            clip.behavior = 'none';
+            clip.behaviorProps = null;
+            delete clip.behavior;
+            delete clip.behaviorProps;
+        } else if (toolInfo.type === 'fx') {
+            if (clip.visualEffects) {
+                delete clip.visualEffects[toolInfo.fxKey];
+                if (toolInfo.fxKey === 'chromaKey') clip.visualEffects.chromaKey = false;
+                if (toolInfo.fxKey === 'scanlines') clip.visualEffects.scanlines = false;
+                if (toolInfo.fxKey === 'invert') clip.visualEffects.invert = false;
+                if (toolInfo.fxKey === 'deviceFrame') clip.visualEffects.deviceFrame = 'none';
+            }
+        } else if (toolInfo.type === 'transition') {
+            if (toolInfo.transType === 'in') {
+                clip.transitionIn = 'none';
+                delete clip.transitionIn;
+                clip.transitionInDuration = 0;
+            } else if (toolInfo.transType === 'out') {
+                clip.transitionOut = 'none';
+                delete clip.transitionOut;
+                clip.transitionOutDuration = 0;
+            } else if (toolInfo.transType === 'intermediate' && toolInfo.transId) {
+                if (clip.transitions) {
+                    clip.transitions = clip.transitions.filter(t => t.id !== toolInfo.transId);
+                }
+            }
+        } else if (toolInfo.type === 'anim-arrow') {
+            if (clip.animations) {
+                clip.animations = clip.animations.filter(a => a.id !== toolInfo.animId);
+            }
+            if (clip.keyframes) {
+                clip.keyframes = clip.keyframes.filter(k => k.arrowId !== toolInfo.animId);
+            }
+        } else if (toolInfo.type === 'trackpoint') {
+            if (clip.trackPoints && typeof toolInfo.tpIdx === 'number') {
+                clip.trackPoints.splice(toolInfo.tpIdx, 1);
+            } else {
+                delete clip.trackPoint;
+                clip.trackingMode = 'none';
+            }
+        }
+        this.saveSnapshot();
+        return true;
+    }
+
     separateAudioAndVideo(clipId) {
         const videoClip = this.getClip(clipId);
         if (!videoClip || videoClip.type !== 'video') {
@@ -895,7 +946,7 @@ class RpaTimeline {
                 }
 
                 const leftPx = clip.startTime * this.pixelsPerSecond;
-                const widthPx = Math.max(30, clip.duration * this.pixelsPerSecond);
+                const widthPx = Math.max(4, clip.duration * this.pixelsPerSecond);
 
                 clipEl.style.left = `${leftPx}px`;
                 clipEl.style.width = `${widthPx}px`;
@@ -904,10 +955,10 @@ class RpaTimeline {
                 let transInHtml = '';
                 if (clip.transitionIn && clip.transitionIn !== 'none') {
                     const durIn = clip.transitionInDuration !== undefined ? clip.transitionInDuration : 0.8;
-                    const durInPx = Math.max(24, Math.min(widthPx * 0.48, durIn * this.pixelsPerSecond));
+                    const durInPx = Math.max(6, Math.min(widthPx * 0.48, durIn * this.pixelsPerSecond));
+                    const isToolActive = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'transition' && window.rpaStudio.activeTimelineTool.transType === 'in' && window.rpaStudio.activeTimelineTool.clipId === clip.id);
                     transInHtml = `
-                        <div class="clip-transition-wedge wedge-in" style="width: ${durInPx}px;" data-action="inspect-transition" title="Transition In: ${clip.transitionIn} (${durIn.toFixed(1)}s) - Drag handle to resize, Click to edit">
-                            <span class="wedge-del-btn" data-action="del-trans-in" title="Remove Transition In">✕</span>
+                        <div class="clip-transition-wedge wedge-in ${isToolActive ? 'active-tool' : ''}" style="width: ${durInPx}px;" data-action="inspect-transition" title="Transition In: ${clip.transitionIn} (${durIn.toFixed(1)}s) - Click to select & edit in Properties, Drag handle to resize">
                             <span class="wedge-label">⮌ ${clip.transitionIn} <span class="wedge-dur">${durIn.toFixed(1)}s</span></span>
                             <div class="wedge-resize-handle handle-in" data-action="resize-trans-in" title="Drag to adjust entrance duration"></div>
                         </div>
@@ -918,12 +969,12 @@ class RpaTimeline {
                 let transOutHtml = '';
                 if (clip.transitionOut && clip.transitionOut !== 'none') {
                     const durOut = clip.transitionOutDuration !== undefined ? clip.transitionOutDuration : 0.8;
-                    const durOutPx = Math.max(24, Math.min(widthPx * 0.48, durOut * this.pixelsPerSecond));
+                    const durOutPx = Math.max(6, Math.min(widthPx * 0.48, durOut * this.pixelsPerSecond));
+                    const isToolActive = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'transition' && window.rpaStudio.activeTimelineTool.transType === 'out' && window.rpaStudio.activeTimelineTool.clipId === clip.id);
                     transOutHtml = `
-                        <div class="clip-transition-wedge wedge-out" style="width: ${durOutPx}px;" data-action="inspect-transition" title="Transition Out: ${clip.transitionOut} (${durOut.toFixed(1)}s) - Drag handle to resize, Click to edit">
+                        <div class="clip-transition-wedge wedge-out ${isToolActive ? 'active-tool' : ''}" style="width: ${durOutPx}px;" data-action="inspect-transition" title="Transition Out: ${clip.transitionOut} (${durOut.toFixed(1)}s) - Click to select & edit in Properties, Drag handle to resize">
                             <div class="wedge-resize-handle handle-out" data-action="resize-trans-out" title="Drag to adjust exit duration"></div>
                             <span class="wedge-label">${clip.transitionOut} <span class="wedge-dur">${durOut.toFixed(1)}s</span> ⮍</span>
-                            <span class="wedge-del-btn" data-action="del-trans-out" title="Remove Transition Out">✕</span>
                         </div>
                     `;
                 }
@@ -934,10 +985,10 @@ class RpaTimeline {
                     clip.transitions.sort((a, b) => a.timeOffset - b.timeOffset);
                     for (const tr of clip.transitions) {
                         const trStartPx = Math.max(0, tr.timeOffset * this.pixelsPerSecond);
-                        const trWidthPx = Math.max(26, (tr.duration || 0.8) * this.pixelsPerSecond);
+                        const trWidthPx = Math.max(16, (tr.duration || 0.8) * this.pixelsPerSecond);
+                        const isToolActive = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'transition' && window.rpaStudio.activeTimelineTool.transId === tr.id);
                         transInterHtml += `
-                            <div class="clip-transition-wedge wedge-intermediate" data-action="drag-intermediate-trans" data-trans-id="${tr.id}" style="left: ${trStartPx}px; width: ${trWidthPx}px;" title="Transition: ${tr.name} (${(tr.duration || 0.8).toFixed(1)}s) - Drag body to slide, Drag handle to resize">
-                                <span class="wedge-del-btn" data-action="del-intermediate-trans" data-trans-id="${tr.id}" title="Remove Transition">✕</span>
+                            <div class="clip-transition-wedge wedge-intermediate ${isToolActive ? 'active-tool' : ''}" data-action="drag-intermediate-trans" data-trans-id="${tr.id}" style="left: ${trStartPx}px; width: ${trWidthPx}px;" title="Transition: ${tr.name} (${(tr.duration || 0.8).toFixed(1)}s) - Click to select & edit, Drag to slide">
                                 <span class="wedge-label">⚡ ${tr.name} <span class="wedge-dur">${(tr.duration || 0.8).toFixed(1)}s</span></span>
                                 <div class="wedge-resize-handle handle-intermediate" data-action="resize-intermediate-trans" data-trans-id="${tr.id}" title="Drag to adjust transition duration"></div>
                             </div>
@@ -945,31 +996,34 @@ class RpaTimeline {
                     }
                 }
 
-                // 3. Behavior Drawer Bar
+                // 3. Behavior Drawer Bar (Collapsed by default with toggle arrow)
                 let behaviorHtml = '';
                 if (clip.behavior && clip.behavior !== 'none') {
+                    const isCollapsed = (clip.behaviorCollapsed !== false);
+                    const isToolActive = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'behavior' && window.rpaStudio.activeTimelineTool.clipId === clip.id);
                     behaviorHtml = `
-                        <div class="clip-behavior-bar" data-action="inspect-behavior" title="Behavior: ${clip.behavior} - Click to edit in Properties panel">
+                        <div class="clip-behavior-bar ${isCollapsed ? 'collapsed' : 'expanded'} ${isToolActive ? 'active-tool' : ''}" data-action="inspect-behavior" title="Behavior: ${clip.behavior} - Click arrow to expand/collapse, Click to edit">
+                            <span class="behavior-expand-arrow" data-action="toggle-behavior-collapse" title="${isCollapsed ? 'Expand behavior' : 'Collapse behavior'}">${isCollapsed ? '▶' : '▼'}</span>
                             <span class="behavior-icon">⚡</span>
                             <span class="behavior-title">${clip.behavior}</span>
-                            <span class="behavior-del-btn" data-action="del-behavior" title="Remove Behavior">✕</span>
                         </div>
                     `;
                 }
 
-                // 4. Interactive Visual Effects Chips
+                // 4. Interactive Visual Effects Chips (No 'x' buttons; select & delete)
                 const fxChips = [];
                 const fx = clip.visualEffects;
                 if (fx) {
-                    if (fx.chromaKey) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="chromaKey" title="Chroma Key - Click to edit">🟩 Chroma <span class="fx-chip-del" data-action="del-fx" data-fx="chromaKey">✕</span></span>`);
-                    if (fx.vignette) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="vignette" title="Vignette - Click to edit">🔘 Vignette ${fx.vignette}% <span class="fx-chip-del" data-action="del-fx" data-fx="vignette">✕</span></span>`);
-                    if (fx.filmGrain) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="filmGrain" title="Grain - Click to edit">🎞 Grain ${fx.filmGrain}% <span class="fx-chip-del" data-action="del-fx" data-fx="filmGrain">✕</span></span>`);
-                    if (fx.glow) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="glow" title="Glow - Click to edit">✨ Glow ${fx.glow}% <span class="fx-chip-del" data-action="del-fx" data-fx="glow">✕</span></span>`);
-                    if (fx.scanlines) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="scanlines" title="VHS Scanlines - Click to edit">📺 VHS <span class="fx-chip-del" data-action="del-fx" data-fx="scanlines">✕</span></span>`);
-                    if (fx.pixelate) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="pixelate" title="Pixelate - Click to edit">👾 Pixelate ${fx.pixelate}px <span class="fx-chip-del" data-action="del-fx" data-fx="pixelate">✕</span></span>`);
-                    if (fx.sepia) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="sepia" title="Sepia - Click to edit">📜 Sepia ${fx.sepia}% <span class="fx-chip-del" data-action="del-fx" data-fx="sepia">✕</span></span>`);
-                    if (fx.invert) fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="invert" title="Invert - Click to edit">🔄 Invert <span class="fx-chip-del" data-action="del-fx" data-fx="invert">✕</span></span>`);
-                    if (fx.deviceFrame && fx.deviceFrame !== 'none') fxChips.push(`<span class="timeline-fx-chip" data-action="inspect-fx" data-fx="deviceFrame" title="Window Frame - Click to edit">🪟 ${fx.deviceFrame.toUpperCase()} <span class="fx-chip-del" data-action="del-fx" data-fx="deviceFrame">✕</span></span>`);
+                    const isFxActive = (k) => (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'fx' && window.rpaStudio.activeTimelineTool.fxKey === k && window.rpaStudio.activeTimelineTool.clipId === clip.id);
+                    if (fx.chromaKey) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('chromaKey') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="chromaKey" title="Chroma Key - Click to select & edit">🟩 Chroma</span>`);
+                    if (fx.vignette) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('vignette') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="vignette" title="Vignette - Click to select & edit">🔘 Vignette ${fx.vignette}%</span>`);
+                    if (fx.filmGrain) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('filmGrain') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="filmGrain" title="Grain - Click to select & edit">🎞 Grain ${fx.filmGrain}%</span>`);
+                    if (fx.glow) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('glow') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="glow" title="Glow - Click to select & edit">✨ Glow ${fx.glow}%</span>`);
+                    if (fx.scanlines) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('scanlines') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="scanlines" title="VHS Scanlines - Click to select & edit">📺 VHS</span>`);
+                    if (fx.pixelate) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('pixelate') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="pixelate" title="Pixelate - Click to select & edit">👾 Pixelate ${fx.pixelate}px</span>`);
+                    if (fx.sepia) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('sepia') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="sepia" title="Sepia - Click to select & edit">📜 Sepia ${fx.sepia}%</span>`);
+                    if (fx.invert) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('invert') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="invert" title="Invert - Click to select & edit">🔄 Invert</span>`);
+                    if (fx.deviceFrame && fx.deviceFrame !== 'none') fxChips.push(`<span class="timeline-fx-chip ${isFxActive('deviceFrame') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="deviceFrame" title="Window Frame - Click to select & edit">🪟 ${fx.deviceFrame.toUpperCase()}</span>`);
                 }
                 const fxChipsHtml = fxChips.length > 0 ? `<div class="clip-fx-container">${fxChips.join('')}</div>` : '';
 
@@ -982,13 +1036,12 @@ class RpaTimeline {
                         const animWidthPx = Math.max(22, anim.duration * this.pixelsPerSecond);
                         const isAnimSelected = this.selectedAnimationId === anim.id;
                         kfHtml += `
-                            <div class="studio-timeline-arrow animation-arrow ${isAnimSelected ? 'selected' : ''}" data-action="select-arrow" data-anim-id="${anim.id}" style="left: ${animStartPx}px; width: ${animWidthPx}px;" title="Animation: ${anim.name} (${anim.duration.toFixed(1)}s, ${anim.easing})">
+                            <div class="studio-timeline-arrow animation-arrow ${isAnimSelected ? 'selected' : ''}" data-action="select-arrow" data-anim-id="${anim.id}" style="left: ${animStartPx}px; width: ${animWidthPx}px;" title="Animation: ${anim.name} (${anim.duration.toFixed(1)}s, ${anim.easing}) - Click to select, Drag to slide">
                                 <div class="arrow-tail" data-action="drag-arrow-tail" data-anim-id="${anim.id}" title="Drag tail to adjust start timing"></div>
                                 <div class="arrow-body" data-action="drag-arrow-body" data-anim-id="${anim.id}" title="Click to select / Drag to slide timing">
                                     <span class="arrow-label">${anim.name}</span>
                                 </div>
                                 <div class="arrow-head" data-action="drag-arrow-head" data-anim-id="${anim.id}" title="Drag head to adjust duration / speed"></div>
-                                <span class="arrow-del-btn" data-action="del-anim-arrow" data-anim-id="${anim.id}" title="Delete Animation Arrow">✕</span>
                             </div>
                         `;
                     }
@@ -1002,6 +1055,21 @@ class RpaTimeline {
                     }
                 }
 
+                // 6. Visual Manual Track Point Markers on Timeline
+                let trackPtHtml = '';
+                if (clip.trackPoints && clip.trackPoints.length > 0) {
+                    clip.trackPoints.sort((a, b) => a.time - b.time);
+                    for (let idx = 0; idx < clip.trackPoints.length; idx++) {
+                        const tp = clip.trackPoints[idx];
+                        const tpLeft = Math.max(3, Math.min(widthPx - 6, tp.time * this.pixelsPerSecond));
+                        const isTpSelected = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'trackpoint' && window.rpaStudio.activeTimelineTool.tpIdx === idx && window.rpaStudio.activeTimelineTool.clipId === clip.id);
+                        trackPtHtml += `<div class="timeline-trackpoint-marker ${isTpSelected ? 'selected' : ''}" style="left: ${tpLeft}px;" data-action="drag-trackpoint" data-tpidx="${idx}" title="🎯 Track Point #${idx + 1} @ ${tp.time.toFixed(2)}s (${Math.round((tp.x || 0.5) * 100)}%, ${Math.round((tp.y || 0.5) * 100)}%) - Click to seek, Drag to adjust timing"></div>`;
+                    }
+                } else if (clip.trackingMode === 'point' && clip.trackPoint) {
+                    const isTpSelected = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'trackpoint' && window.rpaStudio.activeTimelineTool.clipId === clip.id);
+                    trackPtHtml += `<div class="timeline-trackpoint-marker ${isTpSelected ? 'selected' : ''}" style="left: 4px;" data-action="drag-trackpoint" data-tpidx="0" title="🎯 Track Point: (${Math.round((clip.trackPoint.x || 0.5) * 100)}%, ${Math.round((clip.trackPoint.y || 0.5) * 100)}%) - Drag to adjust"></div>`;
+                }
+
                 clipEl.innerHTML = `
                     <div class="clip-handle clip-handle-left" data-action="trim-left" title="Trim start"></div>
                     ${transInHtml}
@@ -1013,6 +1081,7 @@ class RpaTimeline {
                     ${behaviorHtml}
                     ${transOutHtml}
                     ${kfHtml}
+                    ${trackPtHtml}
                     <div class="clip-handle clip-handle-right" data-action="trim-right" title="Trim end"></div>
                 `;
 
@@ -1035,14 +1104,40 @@ class RpaTimeline {
                     }
                 };
 
-                // Context-Aware Right-Click Menu on Clip
+                // Context-Aware Right-Click Menu on Clip or Applied Tools
                 clipEl.oncontextmenu = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     this.selectedClipId = clip.id;
                     onClipSelected(clip);
                     if (window.rpaStudio && window.rpaStudio.showTimelineContextMenu) {
-                        window.rpaStudio.showTimelineContextMenu(e, 'clip', clip);
+                        const toolTarget = e.target.closest('.clip-behavior-bar, .clip-transition-wedge, .timeline-fx-chip, .timeline-trackpoint-marker, .animation-arrow');
+                        if (toolTarget) {
+                            let toolData = { clipId: clip.id };
+                            if (toolTarget.classList.contains('clip-behavior-bar')) {
+                                toolData = { type: 'behavior', name: clip.behavior, clipId: clip.id };
+                            } else if (toolTarget.classList.contains('clip-transition-wedge')) {
+                                const isWedgeIn = toolTarget.classList.contains('wedge-in');
+                                const isWedgeOut = toolTarget.classList.contains('wedge-out');
+                                toolData = {
+                                    type: 'transition',
+                                    transType: isWedgeIn ? 'in' : (isWedgeOut ? 'out' : 'intermediate'),
+                                    transId: toolTarget.dataset.transId,
+                                    clipId: clip.id
+                                };
+                            } else if (toolTarget.classList.contains('timeline-fx-chip')) {
+                                toolData = { type: 'fx', fxKey: toolTarget.dataset.fx, clipId: clip.id };
+                            } else if (toolTarget.classList.contains('timeline-trackpoint-marker')) {
+                                toolData = { type: 'trackpoint', tpIdx: parseInt(toolTarget.dataset.tpidx, 10), clipId: clip.id };
+                            } else if (toolTarget.classList.contains('animation-arrow')) {
+                                toolData = { type: 'anim-arrow', animId: toolTarget.dataset.animId, clipId: clip.id };
+                            }
+                            window.rpaStudio.setActiveTimelineTool(toolData, toolTarget);
+                            window.rpaStudio.showTimelineContextMenu(e, 'tool', toolData);
+                        } else {
+                            window.rpaStudio.setActiveTimelineTool(null);
+                            window.rpaStudio.showTimelineContextMenu(e, 'clip', clip);
+                        }
                     }
                 };
 
@@ -1055,7 +1150,67 @@ class RpaTimeline {
                     let action = actionTarget ? actionTarget.dataset.action : null;
                     let targetEl = actionTarget || e.target;
 
-                    // Edge Trim Priority: Clicking within 6px of clip borders activates trim handles directly from edges (unblocking effect edits)
+                    // Behavior Expand / Collapse Arrow Toggle
+                    if (action === 'toggle-behavior-collapse') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        clip.behaviorCollapsed = (clip.behaviorCollapsed === false ? true : false);
+                        this.render(containerEl, onClipSelected);
+                        if (window.rpaStudio) {
+                            window.rpaStudio.setActiveTimelineTool({ type: 'behavior', clipId: clip.id });
+                            window.rpaStudio.focusInspectorSection('sectionBehaviors');
+                        }
+                        return;
+                    }
+
+                    // Direct Timeline Manual Track Point Dragging
+                    if (action === 'drag-trackpoint' || action === 'inspect-trackpoint') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const tpIdx = parseInt(targetEl.dataset.tpidx || '0', 10);
+                        const targetTp = (clip.trackPoints && clip.trackPoints[tpIdx]) ? clip.trackPoints[tpIdx] : (clip.trackPoint ? clip.trackPoint : null);
+                        const origTime = (targetTp && typeof targetTp.time === 'number') ? targetTp.time : (window.rpaStudio ? window.rpaStudio.playheadTime - clip.startTime : 0);
+                        targetEl.classList.add('dragging');
+
+                        if (window.rpaStudio) {
+                            window.rpaStudio.setActiveTimelineTool({ type: 'trackpoint', tpIdx, clipId: clip.id }, targetEl);
+                            window.rpaStudio.focusInspectorSection('sectionMagnifyProps');
+                            if (targetTp && typeof targetTp.time === 'number') {
+                                window.rpaStudio.seek(clip.startTime + targetTp.time);
+                            }
+                        }
+
+                        const startMoveX = e.clientX;
+                        let moved = false;
+                        const onTpMove = (ev) => {
+                            if (Math.abs(ev.clientX - startMoveX) > 2) moved = true;
+                            const deltaPx = ev.clientX - startMoveX;
+                            const deltaSec = deltaPx / this.pixelsPerSecond;
+                            if (targetTp && typeof targetTp.time === 'number') {
+                                targetTp.time = Math.max(0, Math.min(clip.duration, parseFloat((origTime + deltaSec).toFixed(2))));
+                                targetEl.style.left = `${Math.max(3, Math.min(widthPx - 6, targetTp.time * this.pixelsPerSecond))}px`;
+                                if (window.rpaStudio) {
+                                    window.rpaStudio.seek(clip.startTime + targetTp.time);
+                                    window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
+                                }
+                            }
+                        };
+                        const onTpUp = () => {
+                            targetEl.classList.remove('dragging');
+                            window.removeEventListener('pointermove', onTpMove);
+                            window.removeEventListener('pointerup', onTpUp);
+                            if (moved) {
+                                if (clip.trackPoints) clip.trackPoints.sort((a, b) => a.time - b.time);
+                                this.saveSnapshot();
+                            }
+                            this.render(containerEl, onClipSelected);
+                        };
+                        window.addEventListener('pointermove', onTpMove);
+                        window.addEventListener('pointerup', onTpUp);
+                        return;
+                    }
+
+                    // Edge Trim Priority: Clicking within 6px of clip borders activates trim handles directly from edges
                     const clipRect = clipEl.getBoundingClientRect();
                     const clickRelX = e.clientX - clipRect.left;
                     if (!action || action === 'trim-left' || action === 'trim-right') {
@@ -1068,125 +1223,45 @@ class RpaTimeline {
                         }
                     }
 
-                    // A. Instant Delete Actions right on timeline
-                    if (action === 'del-trans-in') {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        clip.transitionIn = 'none';
-                        delete clip.transitionIn;
-                        clip.transitionInDuration = 0;
-                        this.saveSnapshot();
-                        this.render(containerEl, onClipSelected);
-                        if (window.rpaStudio) {
-                            window.rpaStudio.renderProperties(clip);
-                            window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
-                        }
-                        return;
-                    }
-                    if (action === 'del-trans-out') {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        clip.transitionOut = 'none';
-                        delete clip.transitionOut;
-                        clip.transitionOutDuration = 0;
-                        this.saveSnapshot();
-                        this.render(containerEl, onClipSelected);
-                        if (window.rpaStudio) {
-                            window.rpaStudio.renderProperties(clip);
-                            window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
-                        }
-                        return;
-                    }
-                    if (action === 'del-behavior') {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        clip.behavior = 'none';
-                        clip.behaviorProps = null;
-                        delete clip.behavior;
-                        delete clip.behaviorProps;
-                        this.saveSnapshot();
-                        this.render(containerEl, onClipSelected);
-                        if (window.rpaStudio) {
-                            window.rpaStudio.renderProperties(clip);
-                            window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
-                        }
-                        return;
-                    }
-                    if (action === 'del-fx') {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        const fxKey = targetEl.dataset.fx;
-                        if (clip.visualEffects) {
-                            delete clip.visualEffects[fxKey];
-                            if (fxKey === 'chromaKey') clip.visualEffects.chromaKey = false;
-                            if (fxKey === 'scanlines') clip.visualEffects.scanlines = false;
-                            if (fxKey === 'invert') clip.visualEffects.invert = false;
-                            if (fxKey === 'deviceFrame') clip.visualEffects.deviceFrame = 'none';
-                        }
-                        this.saveSnapshot();
-                        this.render(containerEl, onClipSelected);
-                        if (window.rpaStudio) {
-                            window.rpaStudio.renderProperties(clip);
-                            window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
-                        }
-                        return;
-                    }
-                    if (action === 'del-intermediate-trans') {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        const transId = actionTarget.dataset.transId || actionTarget.closest('[data-trans-id]')?.dataset.transId;
-                        if (clip.transitions) {
-                            clip.transitions = clip.transitions.filter(t => t.id !== transId);
-                        }
-                        this.saveSnapshot();
-                        this.render(containerEl, onClipSelected);
-                        if (window.rpaStudio) {
-                            window.rpaStudio.renderProperties(clip);
-                            window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
-                        }
-                        return;
-                    }
-                    if (action === 'del-anim-arrow') {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        const animId = targetEl.dataset.animId || targetEl.closest('[data-anim-id]')?.dataset.animId;
-                        if (clip.animations) {
-                            clip.animations = clip.animations.filter(a => a.id !== animId);
-                        }
-                        if (clip.keyframes) {
-                            clip.keyframes = clip.keyframes.filter(k => k.arrowId !== animId);
-                        }
-                        if (this.selectedAnimationId === animId) this.selectedAnimationId = null;
-                        this.saveSnapshot();
-                        this.render(containerEl, onClipSelected);
-                        if (window.rpaStudio) {
-                            window.rpaStudio.renderProperties(clip);
-                            window.rpaStudio.compositor.renderFrame(this, window.rpaStudio.playheadTime);
-                        }
-                        return;
-                    }
-
-                    // B. Select and Focus Section in Inspector (Allows drag to continue)
+                    // Tool Inspection Actions (Sets active tool state and highlights in inspector)
                     if (action === 'inspect-transition' || action === 'drag-intermediate-trans' || action === 'resize-intermediate-trans') {
                         this.selectedClipId = clip.id;
                         onClipSelected(clip);
-                        if (window.rpaStudio) window.rpaStudio.focusInspectorSection('sectionTransitions');
+                        if (window.rpaStudio) {
+                            const isWedgeIn = targetEl.classList.contains('wedge-in');
+                            const isWedgeOut = targetEl.classList.contains('wedge-out');
+                            window.rpaStudio.setActiveTimelineTool({
+                                type: 'transition',
+                                transType: isWedgeIn ? 'in' : (isWedgeOut ? 'out' : 'intermediate'),
+                                transId: targetEl.dataset.transId,
+                                clipId: clip.id
+                            }, targetEl);
+                            window.rpaStudio.focusInspectorSection('sectionTransitions');
+                        }
                     }
                     if (action === 'inspect-behavior') {
                         this.selectedClipId = clip.id;
                         onClipSelected(clip);
-                        if (window.rpaStudio) window.rpaStudio.focusInspectorSection('sectionBehaviors');
+                        if (window.rpaStudio) {
+                            window.rpaStudio.setActiveTimelineTool({ type: 'behavior', clipId: clip.id }, targetEl);
+                            window.rpaStudio.focusInspectorSection('sectionBehaviors');
+                        }
                     }
                     if (action === 'inspect-fx') {
                         this.selectedClipId = clip.id;
                         onClipSelected(clip);
-                        if (window.rpaStudio) window.rpaStudio.focusInspectorSection('sectionVisualEffects');
+                        if (window.rpaStudio) {
+                            const fxKey = targetEl.dataset.fx;
+                            window.rpaStudio.setActiveTimelineTool({ type: 'fx', fxKey, clipId: clip.id }, targetEl);
+                            window.rpaStudio.focusInspectorSection('sectionVisualEffects', fxKey);
+                        }
                     }
                     if (action === 'select-arrow') {
                         const animId = targetEl.dataset.animId || targetEl.closest('[data-anim-id]')?.dataset.animId;
                         this.selectedAnimationId = animId;
                         const anim = clip.animations ? clip.animations.find(a => a.id === animId) : null;
                         if (anim && window.rpaStudio) {
+                            window.rpaStudio.setActiveTimelineTool({ type: 'anim-arrow', animId, clipId: clip.id }, targetEl);
                             window.rpaStudio.inspectAnimation(clip, anim);
                         }
                         this.render(containerEl, onClipSelected);

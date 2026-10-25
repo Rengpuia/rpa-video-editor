@@ -2571,7 +2571,19 @@
 
             <div class="canvas-container" id="canvasContainer">
                 <canvas id="previewCanvas" width="1920" height="1080"></canvas>
-                <textarea id="canvasInlineTextEditor" class="canvas-inline-editor hidden" spellcheck="false" placeholder="Type annotation text..."></textarea>
+                <div id="canvasTextEditorWrapper" class="canvas-text-editor-wrapper hidden">
+                    <textarea id="canvasInlineTextEditor" class="canvas-inline-editor" spellcheck="false" placeholder="Type annotation text..."></textarea>
+                    <!-- 4 Corner Sizing Handles for Free-Form Scaling -->
+                    <div class="text-corner-handle handle-nw" data-corner="nw" title="Drag corner to scale free-form"></div>
+                    <div class="text-corner-handle handle-ne" data-corner="ne" title="Drag corner to scale free-form"></div>
+                    <div class="text-corner-handle handle-se" data-corner="se" title="Drag corner to scale free-form"></div>
+                    <div class="text-corner-handle handle-sw" data-corner="sw" title="Drag corner to scale free-form"></div>
+                    <!-- 4 Edge Sizing Handles -->
+                    <div class="text-edge-handle handle-n" data-edge="n" title="Drag edge to scale height"></div>
+                    <div class="text-edge-handle handle-e" data-edge="e" title="Drag edge to scale width"></div>
+                    <div class="text-edge-handle handle-s" data-edge="s" title="Drag edge to scale height"></div>
+                    <div class="text-edge-handle handle-w" data-edge="w" title="Drag edge to scale width"></div>
+                </div>
             </div>
             <div class="stage-controls">
                 <button class="tool-btn" id="btnStepBack" title="Step Back 1s">⏮</button>
@@ -3234,8 +3246,13 @@
                                         <input type="number" class="control-input" id="numMagTrackY" min="0" max="100" step="1" value="50" style="text-align: center; height: 24px; font-size: 11px;">
                                     </div>
                                 </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-                                    <button type="button" class="btn btn-secondary" id="btnAddMagTrackKeyframe" style="width: 100%; font-size: 9.5px; padding: 3px;" title="Save current position as track keyframe at playhead">+ Add Track Keyframe at Playhead</button>
+                                <div style="display: flex; gap: 6px; margin-top: 8px;">
+                                    <button type="button" class="btn btn-secondary" id="btnAddMagTrackKeyframe" style="flex: 1; font-size: 9.5px; padding: 4px;" title="Save current position as track keyframe at playhead">➕ Keyframe</button>
+                                    <button type="button" class="btn btn-secondary" id="btnUndoMagTrack" style="font-size: 9.5px; padding: 4px 8px;" title="Undo track point change">↺ Undo</button>
+                                    <button type="button" class="btn btn-secondary" id="btnRestoreMagTrack" style="font-size: 9.5px; padding: 4px 8px; color: #f87171;" title="Reset track points back to center and remove keyframes">↺ Restore</button>
+                                </div>
+                                <div style="font-size: 9px; color: var(--text-muted); margin-top: 5px;">
+                                    💡 Tip: You can drag the track reticle directly in the player view or slide track points on the timeline.
                                 </div>
                             </div>
                             <div class="control-group" id="groupMagTargetMedia" style="display: none;">
@@ -4102,7 +4119,7 @@
                     <span>↕</span> Height
                 </button>
                 <span style="font-size: 11px; color: var(--text-muted);">ZOOM</span>
-                <input type="range" id="rngTimelineZoom" min="5" max="250" value="45" style="width: 110px;" title="Timeline Zoom (or Ctrl + Mouse Wheel)">
+                <input type="range" id="rngTimelineZoom" min="0.2" max="250" step="0.2" value="45" style="width: 120px;" title="Timeline Zoom (or Ctrl + Mouse Wheel, Shift+Z to Fit)">
             </div>
         </div>
 
@@ -4216,19 +4233,61 @@
                 </select>
             </div>
             <div class="control-group">
-                <label class="control-label">Encoding Quality & Bitrate</label>
-                <select class="control-input" id="selExportBitrate">
-                    <option value="12000000">High Quality (12 Mbps)</option>
-                    <option value="6000000" selected>Balanced (6 Mbps)</option>
-                    <option value="2500000">Compact (2.5 Mbps)</option>
+                <label class="control-label" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Encoding Engine</span>
+                    <span style="font-size: 10px; color: #10b981; font-weight: 600;">Glitch-Free Guarantee</span>
+                </label>
+                <select class="control-input" id="selExportEncodingEngine">
+                    <option value="software" selected>Software Encoding (libvpx / OpenH264 - Glitch Free, Maximum Stability) [Recommended]</option>
+                    <option value="hardware">Hardware Accelerated (GPU MFT / NVENC / QSV)</option>
                 </select>
+            </div>
+            <div class="control-group">
+                <label class="control-label" style="display: flex; justify-content: space-between;">
+                    <span>Encoding Quality & Bitrate</span>
+                    <span id="lblExportBitrateDisplay" style="font-size: 10.5px; color: #38bdf8; font-family: monospace;">8.0 Mbps</span>
+                </label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
+                    <select class="control-input" id="selExportBitratePreset">
+                        <option value="24000000">Master / 4K (24 Mbps)</option>
+                        <option value="16000000">Ultra High (16 Mbps)</option>
+                        <option value="12000000">High Quality (12 Mbps)</option>
+                        <option value="8000000" selected>Standard Studio (8 Mbps) [Recommended]</option>
+                        <option value="5000000">Balanced (5 Mbps)</option>
+                        <option value="2500000">Compact / Web (2.5 Mbps)</option>
+                        <option value="custom">⚙️ Custom Bitrate...</option>
+                    </select>
+                    <input type="number" class="control-input" id="numExportCustomBitrate" value="8" min="1" max="100" step="0.5" placeholder="Mbps" style="font-family: monospace; display: none;">
+                </div>
             </div>
             <div class="control-group">
                 <label class="control-label">Format</label>
                 <select class="control-input" id="selExportFormat">
-                    <option value="webm" selected>WebM (VP9 High Efficiency)</option>
-                    <option value="mp4">MP4 (H.264 Universal)</option>
+                    <option value="webm" selected>WebM (VP9 High Efficiency - Universal Seekable)</option>
+                    <option value="mp4">MP4 (H.264 Universal Video)</option>
                 </select>
+            </div>
+            <div class="control-group" id="groupExportProfile">
+                <label class="control-label">Codec Profile & Compatibility</label>
+                <select class="control-input" id="selExportProfile">
+                    <option value="high" selected>High Profile (avc1.640028 / VP9 Profile 0 - Studio Quality) [Recommended]</option>
+                    <option value="main">Main Profile (avc1.4d0028 - Standard Media Players & Web)</option>
+                    <option value="baseline">Baseline Profile (avc1.42001f - Highest Legacy Compatibility)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label class="control-label" style="display: flex; justify-content: space-between;">
+                    <span>Keyframe Interval (GOP Length)</span>
+                    <span style="font-size: 10px; color: #38bdf8;">Eliminates Forward-Seeking Glitches</span>
+                </label>
+                <select class="control-input" id="selExportKeyframeInterval">
+                    <option value="1.0" selected>1.0 Second (Every 1s - Smooth Instant Forward/Back Seeking) [Recommended]</option>
+                    <option value="2.0">2.0 Seconds (Standard Broadcast GOP)</option>
+                    <option value="0.5">0.5 Seconds (High-Precision Frame Seeking)</option>
+                </select>
+                <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px;">
+                    Frequent keyframes allow external players (VLC, Media Player) to seek forward instantly without gray screen or pixel tearing.
+                </div>
             </div>
             <div class="control-group">
                 <label class="control-label" style="display: flex; justify-content: space-between;">
@@ -4529,6 +4588,20 @@
     </div>
     <!-- Contextual Right-Click Menu on Timeline -->
     <div id="timelineContextMenu" class="timeline-context-menu hidden">
+        <!-- Applied Tool Context Group (Behaviors, Effects, Transitions, Keyframes) -->
+        <div class="context-group" id="ctxGroupTool" style="display: none;">
+            <div class="context-menu-item" data-action="delete-active-tool" style="color: #ef4444;">
+                <span class="ctx-icon">🗑️</span>
+                <span class="ctx-label" id="ctxLabelDeleteTool">Delete Applied Tool</span>
+                <span class="ctx-shortcut">Del</span>
+            </div>
+            <div class="context-menu-item" data-action="inspect-active-tool">
+                <span class="ctx-icon">🔍</span>
+                <span class="ctx-label" id="ctxLabelInspectTool">Inspect in Properties Panel</span>
+            </div>
+            <div class="context-menu-divider"></div>
+        </div>
+
         <!-- Clip Context Group -->
         <div class="context-group" id="ctxGroupClip">
             <div class="context-menu-item" data-action="split-clip">
@@ -4563,6 +4636,10 @@
             <div class="context-menu-item" data-action="reset-transform" id="ctxItemResetTransform">
                 <span class="ctx-icon">📐</span>
                 <span class="ctx-label">Reset Position & Scale</span>
+            </div>
+            <div class="context-menu-item" data-action="edit-text-canvas" id="ctxItemEditTextCanvas" style="display: none;">
+                <span class="ctx-icon">✏️</span>
+                <span class="ctx-label">Edit Text in Player</span>
             </div>
             <div class="context-menu-divider"></div>
             <div class="context-menu-item" data-action="inspect-clip">
