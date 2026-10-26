@@ -48,6 +48,45 @@ class RpaStudioApp {
         document.getElementById('btnStepBack').onclick = () => this.seek(Math.max(0, this.playheadTime - 1.0));
         document.getElementById('btnStepForward').onclick = () => this.seek(this.playheadTime + 1.0);
 
+        // 1.5 Video Player Master Volume Controls
+        this.masterVolume = 1.0;
+        this.isMuted = false;
+        this.preMuteVolume = 1.0;
+        const rngVol = document.getElementById('rngPlayerVolume');
+        const btnMute = document.getElementById('btnPlayerMute');
+        const lblVol = document.getElementById('lblPlayerVolume');
+
+        if (rngVol) {
+            rngVol.oninput = (e) => {
+                const val = parseInt(e.target.value, 10);
+                this.masterVolume = val / 100.0;
+                this.isMuted = (this.masterVolume === 0);
+                if (lblVol) lblVol.innerText = `${val}%`;
+                if (btnMute) btnMute.innerText = this.isMuted ? '🔇' : (val > 50 ? '🔊' : '🔉');
+                this.syncAllAudioVolume();
+            };
+        }
+
+        if (btnMute) {
+            btnMute.onclick = () => {
+                if (this.isMuted) {
+                    this.isMuted = false;
+                    this.masterVolume = this.preMuteVolume || 1.0;
+                    if (rngVol) rngVol.value = Math.round(this.masterVolume * 100);
+                    if (lblVol) lblVol.innerText = `${Math.round(this.masterVolume * 100)}%`;
+                    btnMute.innerText = this.masterVolume > 0.5 ? '🔊' : '🔉';
+                } else {
+                    this.preMuteVolume = this.masterVolume || 1.0;
+                    this.isMuted = true;
+                    this.masterVolume = 0;
+                    if (rngVol) rngVol.value = 0;
+                    if (lblVol) lblVol.innerText = '0%';
+                    btnMute.innerText = '🔇';
+                }
+                this.syncAllAudioVolume();
+            };
+        }
+
         // 2. Timeline Undo & Redo Action Buttons
         const btnUndo = document.getElementById('btnUndo');
         const btnRedo = document.getElementById('btnRedo');
@@ -106,6 +145,19 @@ class RpaStudioApp {
             if (e?.currentTarget) e.currentTarget.blur();
             this.addMarkerAtPlayhead();
         };
+
+        // Universal Tool Luminous Pulse on Click (highlights exact tool for 1.4s)
+        document.addEventListener('pointerdown', (e) => {
+            const target = e.target.closest('.control-group, .studio-card, .timeline-fx-chip, .timeline-audio-chip, .clip-behavior-bar, .clip-transition-wedge, .cat-pill, .caption-edit-card, .btn');
+            if (target) {
+                target.classList.remove('tool-light-pulse');
+                void target.offsetWidth;
+                target.classList.add('tool-light-pulse');
+                setTimeout(() => {
+                    target.classList.remove('tool-light-pulse');
+                }, 1400);
+            }
+        }, true);
 
         // Native Desktop Close & Unsaved State Interception
         if (window.rpaNative && window.rpaNative.onPromptSaveBeforeClose) {
@@ -3628,13 +3680,100 @@ class RpaStudioApp {
         const container = document.getElementById('captionListContainer');
         if (!container) return;
         container.innerHTML = '';
-        for (const cap of this.timeline.captions) {
+        if (!this.timeline.captions || this.timeline.captions.length === 0) {
+            container.innerHTML = `<div style="color:#64748b; font-size:12px; padding:8px;">No subtitles added yet. Add one at playhead or click "Add Subtitle".</div>`;
+            return;
+        }
+
+        for (let idx = 0; idx < this.timeline.captions.length; idx++) {
+            const cap = this.timeline.captions[idx];
+            const isCapActive = (this.activeTimelineTool && this.activeTimelineTool.type === 'caption' && this.activeTimelineTool.captionId === cap.id);
             const card = document.createElement('div');
-            card.className = 'asset-card';
+            card.className = `caption-edit-card ${isCapActive ? 'active-caption' : ''}`;
+            card.dataset.captionId = cap.id;
             card.innerHTML = `
-                <div class="asset-title">💬 ${cap.text}</div>
-                <div class="asset-sub">Start: ${cap.startTime.toFixed(1)}s | Duration: ${cap.duration.toFixed(1)}s</div>
+                <div class="caption-card-header">
+                    <span class="caption-card-index">#${idx + 1}</span>
+                    <div style="display:flex; gap:6px;">
+                        <button class="caption-action-btn caption-seek-btn" data-action="seek" title="Seek to caption start">▶ Seek</button>
+                        <button class="caption-action-btn caption-del-btn" data-action="del" title="Delete subtitle" style="color:#ef4444;">🗑</button>
+                    </div>
+                </div>
+                <textarea class="caption-text-input" rows="2" placeholder="Subtitle text...">${cap.text || ''}</textarea>
+                <div class="caption-timing-row">
+                    <label>Start: <input type="number" step="0.1" min="0" class="caption-num-input input-cap-start" value="${(cap.startTime || 0).toFixed(1)}">s</label>
+                    <label>Duration: <input type="number" step="0.1" min="0.5" class="caption-num-input input-cap-dur" value="${(cap.duration || 1.0).toFixed(1)}">s</label>
+                </div>
             `;
+
+            // Select on click
+            card.onclick = (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
+                this.setActiveTimelineTool({ type: 'caption', captionId: cap.id }, card);
+                this.focusInspectorSection('sectionCaptionProps');
+                this.syncCaptionProps(cap);
+            };
+
+            const txtArea = card.querySelector('.caption-text-input');
+            if (txtArea) {
+                txtArea.oninput = (e) => {
+                    cap.text = e.target.value;
+                    this.timeline.saveSnapshot();
+                    this.syncCaptionProps(cap);
+                    this.renderTimeline();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                };
+            }
+
+            const inputStart = card.querySelector('.input-cap-start');
+            if (inputStart) {
+                inputStart.onchange = (e) => {
+                    cap.startTime = Math.max(0, parseFloat(e.target.value) || 0);
+                    this.timeline.captions.sort((a, b) => a.startTime - b.startTime);
+                    this.timeline.updateTotalDuration();
+                    this.timeline.saveSnapshot();
+                    this.syncCaptionProps(cap);
+                    this.renderTimeline();
+                    this.renderCaptionList();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                };
+            }
+
+            const inputDur = card.querySelector('.input-cap-dur');
+            if (inputDur) {
+                inputDur.onchange = (e) => {
+                    cap.duration = Math.max(0.2, parseFloat(e.target.value) || 1.0);
+                    this.timeline.updateTotalDuration();
+                    this.timeline.saveSnapshot();
+                    this.syncCaptionProps(cap);
+                    this.renderTimeline();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                };
+            }
+
+            const btnSeek = card.querySelector('.caption-seek-btn');
+            if (btnSeek) {
+                btnSeek.onclick = (e) => {
+                    e.stopPropagation();
+                    this.seek(cap.startTime);
+                    this.setActiveTimelineTool({ type: 'caption', captionId: cap.id }, card);
+                    this.focusInspectorSection('sectionCaptionProps');
+                    this.syncCaptionProps(cap);
+                };
+            }
+
+            const btnDel = card.querySelector('.caption-del-btn');
+            if (btnDel) {
+                btnDel.onclick = (e) => {
+                    e.stopPropagation();
+                    this.timeline.removeCaption(cap.id);
+                    this.activeTimelineTool = null;
+                    this.renderCaptionList();
+                    this.renderTimeline();
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                };
+            }
+
             container.appendChild(card);
         }
     }
@@ -4146,11 +4285,38 @@ class RpaStudioApp {
         }
     }
 
+    syncAllAudioVolume() {
+        if (!this.compositor) return;
+        this.compositor.masterVolume = this.masterVolume;
+        if (this.compositor.videoElements) {
+            for (const vid of this.compositor.videoElements.values()) {
+                if (vid) {
+                    vid.volume = Math.max(0, Math.min(1, this.masterVolume));
+                    vid.muted = this.isMuted;
+                }
+            }
+        }
+        if (this.compositor.audioElements) {
+            for (const aud of this.compositor.audioElements.values()) {
+                if (aud) {
+                    aud.volume = Math.max(0, Math.min(1, this.masterVolume));
+                    aud.muted = this.isMuted;
+                }
+            }
+        }
+    }
+
     setActiveTimelineTool(toolInfo, el = null) {
         this.activeTimelineTool = toolInfo;
         document.querySelectorAll('.active-tool').forEach(elem => elem.classList.remove('active-tool'));
         if (el) {
             el.classList.add('active-tool');
+            el.classList.remove('tool-light-pulse');
+            void el.offsetWidth;
+            el.classList.add('tool-light-pulse');
+            setTimeout(() => {
+                el.classList.remove('tool-light-pulse');
+            }, 1400);
         }
     }
 
@@ -4163,6 +4329,7 @@ class RpaStudioApp {
             this.renderTimeline();
             const cur = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
             this.renderProperties(cur);
+            this.renderCaptionList();
             this.compositor.renderFrame(this.timeline, this.playheadTime);
             this.markDirty(true);
         }
@@ -5594,11 +5761,254 @@ class RpaStudioApp {
         const selClipSpeed = document.getElementById('selClipSpeed');
         if (selClipSpeed) selClipSpeed.value = cSpeed.toString();
 
-        // 8. Audio Settings
+        // 8. Audio Settings & FX
         const secAudio = document.getElementById('sectionAudioProps');
         if (secAudio) secAudio.style.display = ((selectedClip.type === 'video' || selectedClip.type === 'audio') && (isSub('audio') || isSub('all'))) ? 'block' : 'none';
-        const propVolume = document.getElementById('propVolume');
-        if (propVolume) propVolume.value = Math.round((selectedClip.volume !== undefined ? selectedClip.volume : 1.0) * 100);
+        if (!selectedClip.audioEffects) selectedClip.audioEffects = {};
+        const afx = selectedClip.audioEffects;
+        const propVol = document.getElementById('propVolume');
+        const lblVol = document.getElementById('lblAudioVolumeVal');
+        if (propVol) {
+            const volPct = Math.round((selectedClip.volume !== undefined ? selectedClip.volume : 1.0) * 100);
+            propVol.value = volPct;
+            if (lblVol) lblVol.innerText = `${volPct}%`;
+            propVol.oninput = (e) => {
+                const v = parseInt(e.target.value, 10);
+                selectedClip.volume = v / 100.0;
+                if (lblVol) lblVol.innerText = `${v}%`;
+                this.timeline.saveSnapshot();
+                this.syncAllAudioVolume();
+            };
+        }
+
+        const rngFadeIn = document.getElementById('rngAudioFadeIn');
+        const lblFadeIn = document.getElementById('lblAudioFadeInVal');
+        if (rngFadeIn) {
+            rngFadeIn.value = Math.round((afx.fadeIn || 0) * 10);
+            if (lblFadeIn) lblFadeIn.innerText = `${(afx.fadeIn || 0).toFixed(1)}s`;
+            rngFadeIn.oninput = (e) => {
+                afx.fadeIn = parseInt(e.target.value, 10) / 10.0;
+                if (lblFadeIn) lblFadeIn.innerText = `${afx.fadeIn.toFixed(1)}s`;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const rngFadeOut = document.getElementById('rngAudioFadeOut');
+        const lblFadeOut = document.getElementById('lblAudioFadeOutVal');
+        if (rngFadeOut) {
+            rngFadeOut.value = Math.round((afx.fadeOut || 0) * 10);
+            if (lblFadeOut) lblFadeOut.innerText = `${(afx.fadeOut || 0).toFixed(1)}s`;
+            rngFadeOut.oninput = (e) => {
+                afx.fadeOut = parseInt(e.target.value, 10) / 10.0;
+                if (lblFadeOut) lblFadeOut.innerText = `${afx.fadeOut.toFixed(1)}s`;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const chkGate = document.getElementById('chkAudioNoiseGate');
+        if (chkGate) {
+            chkGate.checked = !!afx.noiseGate;
+            chkGate.onchange = (e) => {
+                afx.noiseGate = e.target.checked;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const chkLevel = document.getElementById('chkAudioLeveling');
+        if (chkLevel) {
+            chkLevel.checked = !!afx.volumeLeveling;
+            chkLevel.onchange = (e) => {
+                afx.volumeLeveling = e.target.checked;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const chkVocal = document.getElementById('chkAudioVocalIsolate');
+        if (chkVocal) {
+            chkVocal.checked = !!afx.vocalIsolate;
+            chkVocal.onchange = (e) => {
+                afx.vocalIsolate = e.target.checked;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const chkRobot = document.getElementById('chkAudioRobot');
+        if (chkRobot) {
+            chkRobot.checked = !!afx.robot;
+            chkRobot.onchange = (e) => {
+                afx.robot = e.target.checked;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const rngPitch = document.getElementById('rngAudioPitch');
+        const lblPitch = document.getElementById('lblAudioPitchVal');
+        if (rngPitch) {
+            rngPitch.value = afx.pitch || 0;
+            if (lblPitch) lblPitch.innerText = `${afx.pitch || 0} st`;
+            rngPitch.oninput = (e) => {
+                afx.pitch = parseInt(e.target.value, 10);
+                if (lblPitch) lblPitch.innerText = `${afx.pitch} st`;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const rngBass = document.getElementById('rngAudioBass');
+        const lblBass = document.getElementById('lblAudioBassVal');
+        if (rngBass) {
+            rngBass.value = afx.bass || 0;
+            if (lblBass) lblBass.innerText = `${afx.bass || 0}%`;
+            rngBass.oninput = (e) => {
+                afx.bass = parseInt(e.target.value, 10);
+                if (lblBass) lblBass.innerText = `${afx.bass}%`;
+                this.timeline.saveSnapshot();
+                this.renderTimeline();
+            };
+        }
+
+        const btnSep = document.getElementById('btnSeparateAudioVideo');
+        if (btnSep) {
+            btnSep.onclick = () => {
+                this.timeline.separateAudioAndVideo(selectedClip.id);
+                this.renderTimeline();
+                this.renderProperties(selectedClip);
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                this.markDirty(true);
+            };
+        }
+
+        const btnDelAud = document.getElementById('btnDeleteAudioFx');
+        if (btnDelAud) {
+            btnDelAud.onclick = () => {
+                selectedClip.audioEffects = { noiseGate: false, volumeLeveling: false, fadeIn: 0, fadeOut: 0 };
+                this.renderTimeline();
+                this.renderProperties(selectedClip);
+                this.timeline.saveSnapshot();
+            };
+        }
+
+        // 8.5 SFX Generator Controls
+        const isSfxClip = (selectedClip.type === 'sfx' || !!selectedClip.sfxId);
+        const secSfx = document.getElementById('sectionSfxProps');
+        if (secSfx) {
+            secSfx.style.display = isSfxClip ? 'block' : 'none';
+            if (isSfxClip) {
+                const selPreset = document.getElementById('selSfxPreset');
+                if (selPreset && selectedClip.sfxPreset) selPreset.value = selectedClip.sfxPreset;
+                if (selPreset) {
+                    selPreset.onchange = (e) => {
+                        selectedClip.sfxPreset = e.target.value;
+                        selectedClip.title = `SFX: ${e.target.value}`;
+                        this.renderTimeline();
+                        this.timeline.saveSnapshot();
+                    };
+                }
+                const rngSfxVol = document.getElementById('rngSfxVolume');
+                const lblSfxVol = document.getElementById('lblSfxVolumeVal');
+                if (rngSfxVol) {
+                    const sfxVol = Math.round((selectedClip.volume !== undefined ? selectedClip.volume : 1.0) * 100);
+                    rngSfxVol.value = sfxVol;
+                    if (lblSfxVol) lblSfxVol.innerText = `${sfxVol}%`;
+                    rngSfxVol.oninput = (e) => {
+                        selectedClip.volume = parseInt(e.target.value, 10) / 100.0;
+                        if (lblSfxVol) lblSfxVol.innerText = `${e.target.value}%`;
+                        this.timeline.saveSnapshot();
+                    };
+                }
+                const btnPrevSfx = document.getElementById('btnPreviewCurrentSfx');
+                if (btnPrevSfx) {
+                    btnPrevSfx.onclick = () => {
+                        const preset = selectedClip.sfxPreset || (selPreset ? selPreset.value : 'pop');
+                        if (this.sfxGenerator) this.sfxGenerator.playPreset(preset, selectedClip.volume || 1.0);
+                    };
+                }
+            }
+        }
+
+        // 8.6 Subtitle / Caption Inspector Controls
+        const activeCap = (this.activeTimelineTool && this.activeTimelineTool.type === 'caption')
+            ? this.timeline.getCaption(this.activeTimelineTool.captionId)
+            : (this.timeline.captions && this.timeline.captions.length > 0 ? this.timeline.captions[0] : null);
+        const secCap = document.getElementById('sectionCaptionProps');
+        if (secCap) {
+            secCap.style.display = activeCap ? 'block' : 'none';
+            if (activeCap) {
+                this.syncCaptionProps(activeCap);
+                const propCapTxt = document.getElementById('propCaptionText');
+                if (propCapTxt) {
+                    propCapTxt.oninput = (e) => {
+                        activeCap.text = e.target.value;
+                        this.timeline.saveSnapshot();
+                        this.renderTimeline();
+                        this.renderCaptionList();
+                        this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    };
+                }
+                const propCapStart = document.getElementById('propCaptionStart');
+                if (propCapStart) {
+                    propCapStart.onchange = (e) => {
+                        activeCap.startTime = Math.max(0, parseFloat(e.target.value) || 0);
+                        this.timeline.captions.sort((a, b) => a.startTime - b.startTime);
+                        this.timeline.updateTotalDuration();
+                        this.timeline.saveSnapshot();
+                        this.renderTimeline();
+                        this.renderCaptionList();
+                        this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    };
+                }
+                const propCapDur = document.getElementById('propCaptionDur');
+                if (propCapDur) {
+                    propCapDur.onchange = (e) => {
+                        activeCap.duration = Math.max(0.2, parseFloat(e.target.value) || 1.0);
+                        this.timeline.updateTotalDuration();
+                        this.timeline.saveSnapshot();
+                        this.renderTimeline();
+                        this.renderCaptionList();
+                        this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    };
+                }
+                const propCapFont = document.getElementById('propCaptionFontSize');
+                if (propCapFont) {
+                    propCapFont.onchange = (e) => {
+                        activeCap.fontSize = parseInt(e.target.value, 10) || 28;
+                        this.timeline.saveSnapshot();
+                        this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    };
+                }
+                const propCapCol = document.getElementById('propCaptionColor');
+                if (propCapCol) {
+                    propCapCol.onchange = (e) => {
+                        activeCap.color = e.target.value;
+                        this.timeline.saveSnapshot();
+                        this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    };
+                }
+                const btnCapSeek = document.getElementById('btnSeekToCaption');
+                if (btnCapSeek) {
+                    btnCapSeek.onclick = () => {
+                        this.seek(activeCap.startTime);
+                    };
+                }
+                const btnCapDel = document.getElementById('btnDeleteCurrentCaption');
+                if (btnCapDel) {
+                    btnCapDel.onclick = () => {
+                        this.timeline.removeCaption(activeCap.id);
+                        this.activeTimelineTool = null;
+                        this.renderTimeline();
+                        this.renderCaptionList();
+                        this.renderProperties(selectedClip);
+                        this.compositor.renderFrame(this.timeline, this.playheadTime);
+                    };
+                }
+            }
+        }
 
         // Also sync Sidebar effects if open
         const chkChromaSide = document.getElementById('chkChromaKey');
@@ -5610,13 +6020,27 @@ class RpaStudioApp {
         const propRadSide = document.getElementById('propBorderRadius');
         if (propRadSide) propRadSide.value = fx.borderRadius || 0;
 
-        // 8. Studio Animations & Motion Inspector
+        // 8.7 Studio Animations & Motion Inspector
         const secAnim = document.getElementById('sectionAnimationProps');
         if (secAnim) {
             secAnim.style.display = (!isMagnify && !isAudio && (isVideo || isCallout || isImage) && (isSub('animations') || isSub('all'))) ? 'block' : 'none';
             this.renderInspectorKeyframeBadges(selectedClip);
         }
         this.updateZoomMonitorUI(selectedClip);
+    }
+
+    syncCaptionProps(cap) {
+        if (!cap) return;
+        const txt = document.getElementById('propCaptionText');
+        const numStart = document.getElementById('propCaptionStart');
+        const numDur = document.getElementById('propCaptionDur');
+        const selFont = document.getElementById('propCaptionFontSize');
+        const colColor = document.getElementById('propCaptionColor');
+        if (txt) txt.value = cap.text || '';
+        if (numStart) numStart.value = (cap.startTime || 0).toFixed(1);
+        if (numDur) numDur.value = (cap.duration || 1.0).toFixed(1);
+        if (selFont) selFont.value = cap.fontSize || 28;
+        if (colColor) colColor.value = cap.color || '#ffffff';
     }
 
     focusInspectorSection(sectionId, optKey = null) {
@@ -5643,11 +6067,14 @@ class RpaStudioApp {
         const sectionCatMap = {
             'sectionBehaviors': 'behaviors',
             'sectionVisualEffects': 'visual',
+            'sectionClipSpeed': 'visual',
             'sectionTransitions': 'transitions',
             'sectionTransitionProps': 'transitions',
             'sectionMagnifyProps': 'magnify',
             'sectionAnimationProps': 'animations',
             'sectionAudioProps': 'audio',
+            'sectionSfxProps': 'sfx',
+            'sectionCaptionProps': 'captions',
             'sectionCalloutProps': 'callout',
             'sectionTransformProps': 'transform',
             'sectionTimingProps': 'timing'
@@ -5673,21 +6100,21 @@ class RpaStudioApp {
                 if (chv) chv.innerText = '▼';
             }
             sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            sec.classList.remove('inspector-section-highlight');
+            sec.classList.remove('inspector-section-highlight', 'inspector-section-glow');
             void sec.offsetWidth; // Force reflow to re-trigger luminous highlight animation
-            sec.classList.add('inspector-section-highlight');
+            sec.classList.add('inspector-section-highlight', 'inspector-section-glow');
             setTimeout(() => {
-                sec.classList.remove('inspector-section-highlight');
+                sec.classList.remove('inspector-section-highlight', 'inspector-section-glow');
             }, 1800);
 
             if (optKey) {
                 const subTarget = sec.querySelector(`[data-fx="${optKey}"]`) || sec.querySelector(`[data-tool="${optKey}"]`) || sec.querySelector(`#chk${optKey.charAt(0).toUpperCase() + optKey.slice(1)}`);
                 if (subTarget) {
                     const row = subTarget.closest('.control-group') || subTarget.closest('.fx-row') || subTarget;
-                    row.classList.remove('inspector-section-highlight');
+                    row.classList.remove('inspector-section-highlight', 'tool-light-pulse');
                     void row.offsetWidth;
-                    row.classList.add('inspector-section-highlight');
-                    setTimeout(() => row.classList.remove('inspector-section-highlight'), 1800);
+                    row.classList.add('inspector-section-highlight', 'tool-light-pulse');
+                    setTimeout(() => row.classList.remove('inspector-section-highlight', 'tool-light-pulse'), 1400);
                 }
             }
         }
@@ -6494,7 +6921,11 @@ class RpaStudioApp {
             } else if (data.toolName === 'fadeIn') clip.audioEffects.fadeIn = 1.0;
             else if (data.toolName === 'fadeOut') clip.audioEffects.fadeOut = 1.0;
             else if (data.toolName === 'noiseGate') clip.audioEffects.noiseGate = true;
-            else if (data.toolName === 'leveling') clip.audioEffects.volumeLeveling = true;
+            else if (data.toolName === 'leveling' || data.toolName === 'volumeLeveling') clip.audioEffects.volumeLeveling = true;
+            else if (data.toolName === 'vocalClear' || data.toolName === 'vocalIsolate') clip.audioEffects.vocalIsolate = true;
+            else if (data.toolName === 'robot') clip.audioEffects.robot = true;
+            else if (data.toolName === 'pitch') clip.audioEffects.pitch = true;
+            else if (data.toolName === 'bass') clip.audioEffects.bass = true;
         } else if (data.toolType === 'animation') {
             let dropOffset = null;
             if (e && e.clientX) {
@@ -6510,6 +6941,22 @@ class RpaStudioApp {
         }
 
         this.timeline.selectedClipId = clip.id;
+        if (data.toolType === 'effect') {
+            const fxKey = data.toolName.startsWith('filter-') ? 'colorGradePreset' : data.toolName;
+            this.setActiveTimelineTool({ type: 'fx', fxKey, clipId: clip.id });
+            this.focusInspectorSection('sectionVisualEffects', fxKey);
+        } else if (data.toolType === 'audio-fx') {
+            const fxKey = data.toolName;
+            this.setActiveTimelineTool({ type: 'audio-fx', fxKey, clipId: clip.id });
+            this.focusInspectorSection('sectionAudioProps', fxKey);
+        } else if (data.toolType === 'behavior') {
+            this.setActiveTimelineTool({ type: 'behavior', clipId: clip.id });
+            this.focusInspectorSection('sectionBehaviors');
+        } else if (data.toolType === 'transition') {
+            this.setActiveTimelineTool({ type: 'transition', transType: 'in', clipId: clip.id });
+            this.focusInspectorSection('sectionTransitions');
+        }
+
         this.renderProperties(clip);
         this.timeline.saveSnapshot();
         this.renderTimeline();
@@ -7846,11 +8293,15 @@ class RpaStudioApp {
                     const cosR = Math.cos(rotRad);
                     const sinR = Math.sin(rotRad);
 
+                    const scaleRatio = canvas.width / (rect.width || 1);
+                    const handleHitRadius = Math.max(30, 15 * scaleRatio);
+                    const rotHitRadius = Math.max(32, 16 * scaleRatio);
+
                     const rotHandleRelY = -hh - 34;
                     const rotHandleX = b.cx + (0 * cosR - rotHandleRelY * sinR);
                     const rotHandleY = b.cy + (0 * sinR + rotHandleRelY * cosR);
 
-                    if (distance(pt.x, pt.y, rotHandleX, rotHandleY) <= 16) {
+                    if (distance(pt.x, pt.y, rotHandleX, rotHandleY) <= rotHitRadius) {
                         isInteracting = true;
                         interactionMode = 'rotate';
                         startClipState = { rotation: selClip.rotation || 0 };
@@ -7873,7 +8324,7 @@ class RpaStudioApp {
                     for (const h of handles) {
                         const hx = b.cx + (h.rx * cosR - h.ry * sinR);
                         const hy = b.cy + (h.rx * sinR + h.ry * cosR);
-                        if (distance(pt.x, pt.y, hx, hy) <= 14) {
+                        if (distance(pt.x, pt.y, hx, hy) <= handleHitRadius) {
                             isInteracting = true;
                             interactionMode = 'resize';
                             resizeHandle = h.type;
@@ -7966,12 +8417,88 @@ class RpaStudioApp {
             }
         });
 
+        let rafRenderId = null;
+        const scheduleCanvasRender = () => {
+            if (!rafRenderId) {
+                rafRenderId = requestAnimationFrame(() => {
+                    rafRenderId = null;
+                    this.compositor.renderFrame(this.timeline, this.playheadTime);
+                });
+            }
+        };
+
         const onPointerMove = (e) => {
-            if (!isInteracting) return;
+            const pt = getCanvasPoint(e);
+
+            if (!isInteracting) {
+                // Dynamic cursor detection on canvas hover
+                if (this.compositor.activeCanvasTool === 'hand') {
+                    canvas.style.cursor = 'grab';
+                    return;
+                }
+                const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
+                if (!selClip) {
+                    canvas.style.cursor = 'default';
+                    return;
+                }
+                const b = this.compositor.getClipCanvasBounds(selClip);
+                const rotRad = (b.rotation || 0) * Math.PI / 180;
+                const cosR = Math.cos(rotRad);
+                const sinR = Math.sin(rotRad);
+                const hw = b.width / 2;
+                const hh = b.height / 2;
+
+                const rotHandleRelY = -hh - 34;
+                const rotHandleX = b.cx + (0 * cosR - rotHandleRelY * sinR);
+                const rotHandleY = b.cy + (0 * sinR + rotHandleRelY * cosR);
+
+                const rectNow = canvas.getBoundingClientRect();
+                const curRatio = canvas.width / (rectNow.width || 1);
+                const curHitRadius = Math.max(30, 15 * curRatio);
+
+                if (distance(pt.x, pt.y, rotHandleX, rotHandleY) <= Math.max(32, 16 * curRatio)) {
+                    canvas.style.cursor = 'grab';
+                    return;
+                }
+
+                const handles = [
+                    { type: 'nw', rx: -hw, ry: -hh, cursor: 'nwse-resize' },
+                    { type: 'n',  rx: 0,   ry: -hh, cursor: 'ns-resize' },
+                    { type: 'ne', rx: hw,  ry: -hh, cursor: 'nesw-resize' },
+                    { type: 'e',  rx: hw,  ry: 0,   cursor: 'ew-resize' },
+                    { type: 'se', rx: hw,  ry: hh,  cursor: 'nwse-resize' },
+                    { type: 's',  rx: 0,   ry: hh,  cursor: 'ns-resize' },
+                    { type: 'sw', rx: -hw, ry: hh,  cursor: 'nesw-resize' },
+                    { type: 'w',  rx: -hw, ry: 0,   cursor: 'ew-resize' }
+                ];
+
+                let handleFound = false;
+                for (const h of handles) {
+                    const hx = b.cx + (h.rx * cosR - h.ry * sinR);
+                    const hy = b.cy + (h.rx * sinR + h.ry * cosR);
+                    if (distance(pt.x, pt.y, hx, hy) <= curHitRadius) {
+                        canvas.style.cursor = h.cursor;
+                        handleFound = true;
+                        break;
+                    }
+                }
+                if (handleFound) return;
+
+                const dx = pt.x - b.cx;
+                const dy = pt.y - b.cy;
+                const unrotX = dx * Math.cos(-rotRad) - dy * Math.sin(-rotRad);
+                const unrotY = dx * Math.sin(-rotRad) + dy * Math.cos(-rotRad);
+                if (Math.abs(unrotX) <= hw && Math.abs(unrotY) <= hh) {
+                    canvas.style.cursor = 'move';
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+                return;
+            }
+
             if (Math.hypot(e.clientX - startClientPos.x, e.clientY - startClientPos.y) > 4) {
                 hasMoved = true;
             }
-            const pt = getCanvasPoint(e);
             const deltaX = pt.x - startCanvasPos.x;
             const deltaY = pt.y - startCanvasPos.y;
 
@@ -7984,7 +8511,7 @@ class RpaStudioApp {
                 if (!this.compositor.panOffset) this.compositor.panOffset = { x: 0, y: 0 };
                 this.compositor.panOffset.x = Math.round(startPanOffset.x + deltaClientX);
                 this.compositor.panOffset.y = Math.round(startPanOffset.y + deltaClientY);
-                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                scheduleCanvasRender();
                 return;
             }
 
@@ -8019,7 +8546,7 @@ class RpaStudioApp {
                 if (numY) numY.value = Math.round(normY * 100);
 
                 this.renderTimeline();
-                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                scheduleCanvasRender();
                 return;
             }
 
@@ -8042,7 +8569,7 @@ class RpaStudioApp {
                 if (resizeHandle === 'bottom' || resizeHandle === 'sw' || resizeHandle === 'se') {
                     selClip.crop.bottom = Math.max(0, Math.round(startClipState.bottom - deltaY * ratioY));
                 }
-                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                scheduleCanvasRender();
                 this.markDirty(true);
                 return;
             }
@@ -8086,7 +8613,7 @@ class RpaStudioApp {
                 const pY = document.getElementById('propYOffset');
                 if (pX) pX.value = selClip.xOffset;
                 if (pY) pY.value = selClip.yOffset;
-                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                scheduleCanvasRender();
             } else if (interactionMode === 'rotate') {
                 const b = startClipBounds;
                 const angle = Math.atan2(pt.y - b.cy, pt.x - b.cx) * (180 / Math.PI) + 90;
@@ -8105,7 +8632,7 @@ class RpaStudioApp {
                         ind.style.transformOrigin = '50% 21px';
                     }
                 }
-                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                scheduleCanvasRender();
             } else if (interactionMode === 'resize') {
                 const b = startClipBounds;
                 const hw = b.width / 2;
@@ -8175,12 +8702,17 @@ class RpaStudioApp {
                 if (pX) pX.value = selClip.xOffset;
                 if (pY) pY.value = selClip.yOffset;
 
-                this.compositor.renderFrame(this.timeline, this.playheadTime);
+                scheduleCanvasRender();
             }
         };
 
         const onPointerUp = () => {
+            if (rafRenderId) {
+                cancelAnimationFrame(rafRenderId);
+                rafRenderId = null;
+            }
             if (isInteracting) {
+                this.compositor.renderFrame(this.timeline, this.playheadTime);
                 const selClip = this.timeline.selectedClipId ? this.timeline.getClip(this.timeline.selectedClipId) : null;
                 if (selClip) {
                     if (interactionMode === 'trackpoint' && selClip.trackPoints) {

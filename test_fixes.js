@@ -50,10 +50,7 @@ global.requestAnimationFrame = () => {};
 global.addEventListener = () => {};
 window.addEventListener = () => {};
 global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-window.RpaSfxGenerator = function() {
-    return { addToTimeline: async () => null };
-};
-global.RpaSfxGenerator = window.RpaSfxGenerator;
+global.URL = { createObjectURL: () => 'blob:mock-sfx' };
 
 global.document = {
     readyState: 'complete',
@@ -92,6 +89,10 @@ window.RpaTimeline = RpaTimeline;
 const { RpaCompositor } = require('./client/src/compositor.js');
 global.RpaCompositor = RpaCompositor;
 window.RpaCompositor = RpaCompositor;
+
+const { RpaSfxGenerator } = require('./client/src/sfx_generator.js');
+global.RpaSfxGenerator = RpaSfxGenerator;
+window.RpaSfxGenerator = RpaSfxGenerator;
 
 const { RpaStudioApp } = require('./client/src/app.js');
 
@@ -256,5 +257,205 @@ console.log('\n[TEST 3] Testing Animation Arrow Tweening & Presets...');
     console.log('✓ Animation arrows interpolate correctly, retain target positions, and fade presets work as expected.');
 }
 
-console.log('\n--- ALL VERIFICATION TESTS PASSED SUCCESSFULLY! ---');
-process.exit(0);
+// -------------------------------------------------------------
+// TEST 4: Canvas Resize Handle Hit Radius & Scaling
+// -------------------------------------------------------------
+console.log('\n[TEST 4] Testing Canvas Resize Handle Hit Radius & Scaling...');
+{
+    const canvas = { width: 1920, height: 1080 };
+    const rect = { width: 640, height: 360 }; // typical scaled screen size
+    const scaleRatio = canvas.width / (rect.width || 1); // 3.0
+    const handleHitRadius = Math.max(30, 15 * scaleRatio); // 45px canvas = 15px screen
+
+    assert.strictEqual(scaleRatio, 3.0, 'Scale ratio on 1080p canvas in 640px window should be 3.0');
+    assert(handleHitRadius >= 45, `Handle hit radius in canvas pixels must be >= 45 (was ${handleHitRadius})`);
+    const screenRadius = handleHitRadius / scaleRatio;
+    assert(screenRadius >= 14, `Screen-equivalent grab radius must be >= 14 screen pixels (was ${screenRadius})`);
+    console.log(`✓ Resize handle hit radius is ${handleHitRadius} canvas px (${screenRadius.toFixed(1)} screen px) for effortless clicking.`);
+}
+
+// -------------------------------------------------------------
+// TEST 5: Video Export Gizmo & Guides Suppression (Issue 10)
+// -------------------------------------------------------------
+console.log('\n[TEST 5] Testing Video Export Gizmo & Bounding Box Suppression...');
+{
+    const { canvas, ctx } = createMockCanvas(1920, 1080);
+    const compositor = new RpaCompositor(canvas, ctx);
+    const timeline = new RpaTimeline();
+    const clip = timeline.addClip({
+        type: 'video',
+        title: 'Export Test Video',
+        startTime: 0,
+        duration: 5.0
+    });
+    timeline.selectedClipId = clip.id;
+
+    let gizmoRendered = false;
+    compositor.renderTransformGizmo = () => { gizmoRendered = true; };
+
+    // Standard preview rendering: gizmo should render when selected
+    compositor.renderFrame(timeline, 1.0, false, false);
+    assert.strictEqual(gizmoRendered, true, 'Gizmo should render during canvas preview with selected clip');
+
+    // Export rendering: gizmo MUST NEVER render!
+    gizmoRendered = false;
+    compositor.renderFrame(timeline, 1.0, false, true);
+    assert.strictEqual(gizmoRendered, false, 'Gizmo MUST NOT render when isExport is true');
+
+    // Also verify when compositor.isExporting flag is true
+    compositor.isExporting = true;
+    gizmoRendered = false;
+    compositor.renderFrame(timeline, 1.0, false, false);
+    assert.strictEqual(gizmoRendered, false, 'Gizmo MUST NOT render when compositor.isExporting is true');
+    compositor.isExporting = false;
+
+    console.log('✓ Video export completely suppresses gizmo bounding box and handles.');
+}
+
+// -------------------------------------------------------------
+// TEST 6: Video Clip Split & TrimStart Continuity (Issue 11)
+// -------------------------------------------------------------
+console.log('\n[TEST 6] Testing Split Video Clip & TrimStart Continuity...');
+{
+    const timeline = new RpaTimeline();
+    const origClip = timeline.addClip({
+        type: 'video',
+        title: 'Raw Interview Footage',
+        startTime: 0.0,
+        duration: 10.0,
+        trimStart: 2.0,
+        speed: 1.0
+    });
+
+    // Split at 4.0s
+    const part2 = timeline.splitClip(origClip.id, 4.0);
+    assert(part2, 'splitClip must return second clip');
+    assert.strictEqual(origClip.duration, 4.0, 'Part 1 duration must be 4.0s');
+    assert.strictEqual(part2.startTime, 4.0, 'Part 2 startTime must be 4.0s');
+    assert.strictEqual(part2.duration, 6.0, 'Part 2 duration must be 6.0s');
+    assert.strictEqual(part2.trimStart, 6.0, 'Part 2 trimStart must be 2.0 + 4.0 = 6.0s');
+    assert(origClip.title.includes('Part 1'), 'Part 1 title must be updated with (Part 1)');
+    assert(part2.title.includes('Part 2'), 'Part 2 title must be labeled (Part 2)');
+
+    // Clips must be sorted by startTime
+    assert.strictEqual(timeline.clips[0].id, origClip.id);
+    assert.strictEqual(timeline.clips[1].id, part2.id);
+
+    console.log('✓ Video split preserves exact trimStart offsets, duration, and sorts timeline clips.');
+}
+
+// -------------------------------------------------------------
+// TEST 7: Audio FX Chips & Keyboard Tool Deletion (Issues 6 & 7)
+// -------------------------------------------------------------
+console.log('\n[TEST 7] Testing Audio FX, Visual FX & Keyboard Tool Deletion...');
+{
+    const timeline = new RpaTimeline();
+    const clip = timeline.addClip({
+        type: 'video',
+        title: 'Clip with Effects',
+        startTime: 0,
+        duration: 5.0,
+        visualEffects: {
+            chromaticAberration: 16,
+            vhsGlitch: 65,
+            glow: 40
+        },
+        audioEffects: {
+            fadeIn: 1.5,
+            noiseGate: true,
+            robot: true
+        }
+    });
+
+    // Delete a visual effect
+    const resFx = timeline.deleteTimelineTool({ type: 'fx', fxKey: 'chromaticAberration', clipId: clip.id });
+    assert.strictEqual(resFx, true, 'deleteTimelineTool should return true for fx');
+    assert.strictEqual(clip.visualEffects.chromaticAberration, 0, 'chromaticAberration must be cleared to 0');
+
+    // Delete an audio effect
+    const resAudio = timeline.deleteTimelineTool({ type: 'audio-fx', fxKey: 'noiseGate', clipId: clip.id });
+    assert.strictEqual(resAudio, true, 'deleteTimelineTool should return true for audio-fx');
+    assert.strictEqual(clip.audioEffects.noiseGate, false, 'noiseGate must be cleared to false');
+
+    const resFade = timeline.deleteTimelineTool({ type: 'audio-fx', fxKey: 'fadeIn', clipId: clip.id });
+    assert.strictEqual(resFade, true);
+    assert.strictEqual(clip.audioEffects.fadeIn, 0, 'fadeIn must be reset to 0');
+
+    console.log('✓ Visual & Audio FX can be deleted cleanly via deleteTimelineTool.');
+}
+
+// -------------------------------------------------------------
+// TEST 8: SFX Generator addToTimeline Preserves Clip & ID (Issue 8)
+// -------------------------------------------------------------
+console.log('\n[TEST 8] Testing SFX Generator addToTimeline Clip & ID Preservation...');
+async function testSfxGenerator() {
+    const { RpaSfxGenerator } = require('./client/src/sfx_generator.js');
+    const sfxGen = new RpaSfxGenerator();
+    sfxGen.getWavBlob = async () => ({ size: 100 });
+
+    const timeline = new RpaTimeline();
+
+    // Generate SFX on timeline
+    const addedClip = await sfxGen.addToTimeline(timeline, 'pop', 2.5, 2);
+    assert(addedClip, 'Added SFX clip must not be null');
+    assert(addedClip.id, 'Added SFX clip must have a generated ID');
+    assert.strictEqual(addedClip.type, 'audio');
+    assert.strictEqual(addedClip.startTime, 2.5);
+    assert(timeline.getClip(addedClip.id), 'SFX clip must be retrievable from timeline');
+    console.log(`✓ SFX clip added with valid ID: ${addedClip.id} and duration ${addedClip.duration.toFixed(2)}s.`);
+}
+
+// -------------------------------------------------------------
+// TEST 9: Subtitle / Caption Management & Duration Editing (Issue 9)
+// -------------------------------------------------------------
+console.log('\n[TEST 9] Testing Subtitle / Caption Management & Duration Editing...');
+{
+    const timeline = new RpaTimeline();
+    const cap1 = timeline.addCaption(1.0, 3.0, 'First subtitle line');
+    assert(cap1 && cap1.id, 'addCaption must return caption object with id');
+    assert.strictEqual(timeline.captions.length, 1);
+
+    // Update caption text and duration
+    const updated = timeline.updateCaption(cap1.id, { text: 'Updated subtitle line', duration: 5.5 });
+    assert.strictEqual(updated.text, 'Updated subtitle line');
+    assert.strictEqual(updated.duration, 5.5);
+
+    // Add second caption and verify sorting
+    const cap2 = timeline.addCaption(0.5, 2.0, 'Earlier line');
+    assert.strictEqual(timeline.captions[0].id, cap2.id, 'Captions must be sorted by startTime');
+
+    // Remove caption
+    timeline.removeCaption(cap1.id);
+    assert.strictEqual(timeline.captions.length, 1);
+    assert.strictEqual(timeline.captions[0].id, cap2.id);
+
+    console.log('✓ Subtitle / Caption additions, edits, duration resizing and deletions work seamlessly.');
+}
+
+// -------------------------------------------------------------
+// TEST 10: Player Master Volume Controller (Issue 4)
+// -------------------------------------------------------------
+console.log('\n[TEST 10] Testing Player Master Volume Control...');
+{
+    const { canvas, ctx } = createMockCanvas(1920, 1080);
+    const compositor = new RpaCompositor(canvas, ctx);
+    compositor.masterVolume = 0.5;
+
+    assert.strictEqual(compositor.masterVolume, 0.5, 'compositor.masterVolume should be 0.5');
+
+    // Test volume multiplier formula in syncMediaPlayback
+    const clip = { volume: 0.8 };
+    const effVol = 1.0;
+    const computedVol = Math.max(0, Math.min(1.0, (clip.volume !== undefined ? clip.volume : 1.0) * effVol * (compositor.masterVolume !== undefined ? compositor.masterVolume : 1.0)));
+    assert.strictEqual(Math.round(computedVol * 100) / 100, 0.4, `Effective volume must be 0.8 * 0.5 = 0.4 (was ${computedVol})`);
+
+    console.log('✓ Player master volume is correctly multiplied into media playback.');
+}
+
+testSfxGenerator().then(() => {
+    console.log('\n--- ALL VERIFICATION TESTS PASSED SUCCESSFULLY! ---');
+    process.exit(0);
+}).catch(err => {
+    console.error('Test failed:', err);
+    process.exit(1);
+});

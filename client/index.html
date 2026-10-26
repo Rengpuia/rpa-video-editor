@@ -2589,6 +2589,11 @@
                 <button class="tool-btn" id="btnStepBack" title="Step Back 1s">⏮</button>
                 <button class="tool-btn" id="btnPlayPause" style="font-size: 16px; min-width: 44px;" title="Play/Pause (Space)">▶</button>
                 <button class="tool-btn" id="btnStepForward" title="Step Forward 1s">⏭</button>
+                <div class="player-volume-container" title="Player Master Volume">
+                    <button class="btn-player-mute" id="btnPlayerMute" title="Mute / Unmute">🔊</button>
+                    <input type="range" class="player-volume-slider" id="rngPlayerVolume" min="0" max="100" value="100" title="Adjust Volume">
+                    <span class="player-volume-label" id="lblPlayerVolume">100%</span>
+                </div>
                 <div class="timecode-display" id="lblTimecode">00:00:00.00</div>
                 <button class="tool-btn" id="btnFullscreen" title="Toggle Fullscreen">⛶</button>
             </div>
@@ -4091,14 +4096,133 @@
 
                     <!-- Audio Controls (Visible if audio or video clip) -->
                     <div class="inspector-section" id="sectionAudioProps">
-                        <div class="inspector-section-title">AUDIO SETTINGS</div>
+                        <div class="inspector-section-title">AUDIO & FX CONTROLS</div>
                         <div class="control-group">
-                            <label class="control-label">Audio Volume (%)</label>
+                            <label class="control-label" style="display: flex; justify-content: space-between;">
+                                <span>Audio Volume</span>
+                                <span id="lblAudioVolumeVal" style="color: #38bdf8; font-weight: 700;">100%</span>
+                            </label>
                             <input type="range" class="control-input" id="propVolume" min="0" max="200" value="100">
                         </div>
-                        <button class="btn btn-secondary" id="btnSeparateAudioVideo" style="width: 100%; margin-top: 4px;" title="Separate video and audio into distinct tracks">
-                            🎵 Separate Video & Audio
+                        <div class="control-group">
+                            <label class="control-label" style="display: flex; justify-content: space-between;">
+                                <span>Fade In Duration</span>
+                                <span id="lblAudioFadeInVal" style="color: #10b981; font-weight: 700;">0.0s</span>
+                            </label>
+                            <input type="range" class="control-input" id="rngAudioFadeIn" min="0" max="50" value="0">
+                        </div>
+                        <div class="control-group">
+                            <label class="control-label" style="display: flex; justify-content: space-between;">
+                                <span>Fade Out Duration</span>
+                                <span id="lblAudioFadeOutVal" style="color: #f59e0b; font-weight: 700;">0.0s</span>
+                            </label>
+                            <input type="range" class="control-input" id="rngAudioFadeOut" min="0" max="50" value="0">
+                        </div>
+                        <div class="control-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-secondary);">
+                                <input type="checkbox" id="chkAudioNoiseGate"> 🎙️ Noise Gate
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-secondary);">
+                                <input type="checkbox" id="chkAudioLeveling"> 📊 Leveling
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-secondary);">
+                                <input type="checkbox" id="chkAudioVocalIsolate"> 🗣️ Vocal Clear
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-secondary);">
+                                <input type="checkbox" id="chkAudioRobot"> 🤖 Robot Voice
+                            </label>
+                        </div>
+                        <div class="control-group" style="margin-top: 8px;">
+                            <label class="control-label" style="display: flex; justify-content: space-between;">
+                                <span>Pitch Shift</span>
+                                <span id="lblAudioPitchVal" style="color: #a855f7; font-weight: 700;">0 st</span>
+                            </label>
+                            <input type="range" class="control-input" id="rngAudioPitch" min="-12" max="12" value="0">
+                        </div>
+                        <div class="control-group">
+                            <label class="control-label" style="display: flex; justify-content: space-between;">
+                                <span>Bass Boost</span>
+                                <span id="lblAudioBassVal" style="color: #06b6d4; font-weight: 700;">0%</span>
+                            </label>
+                            <input type="range" class="control-input" id="rngAudioBass" min="0" max="100" value="0">
+                        </div>
+                        <div style="display: flex; gap: 6px; margin-top: 10px;">
+                            <button class="btn btn-secondary" id="btnSeparateAudioVideo" style="flex: 1;" title="Separate video and audio into distinct tracks">
+                                🎵 Separate Audio
+                            </button>
+                            <button class="btn btn-secondary btn-del" id="btnDeleteAudioFx" style="color: #ef4444;" title="Remove Audio Effects">
+                                ✕ Clear FX
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- SFX Controls (Visible if SFX clip) -->
+                    <div class="inspector-section" id="sectionSfxProps" style="display: none;">
+                        <div class="inspector-section-title">SFX SOUND GENERATOR</div>
+                        <div class="control-group">
+                            <label class="control-label">Sound Effect Preset</label>
+                            <select class="control-input" id="selSfxPreset">
+                                <option value="whoosh-fast">Whoosh (Fast Whip)</option>
+                                <option value="whoosh-deep">Cinematic Swoosh</option>
+                                <option value="pop">Pop & Bubble</option>
+                                <option value="shutter">Camera Shutter</option>
+                                <option value="ding">Success Chime</option>
+                                <option value="impact-boom">Sub-Bass Boom</option>
+                                <option value="glitch">Cyber Glitch Zap</option>
+                                <option value="click">Mechanical Key Click</option>
+                                <option value="beep">Countdown Pip</option>
+                                <option value="laser">Sci-Fi Laser Blast</option>
+                                <option value="vinyl">Vinyl Scratch</option>
+                                <option value="sparkle">Magic Sparkle</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label class="control-label" style="display: flex; justify-content: space-between;">
+                                <span>Volume</span>
+                                <span id="lblSfxVolumeVal" style="color: #10b981; font-weight: 700;">100%</span>
+                            </label>
+                            <input type="range" class="control-input" id="rngSfxVolume" min="0" max="150" value="100">
+                        </div>
+                        <button class="btn btn-secondary" id="btnPreviewCurrentSfx" style="width: 100%; margin-top: 6px;">
+                            🔊 Preview SFX Sound
                         </button>
+                    </div>
+
+                    <!-- Subtitle / Caption Inspector Section -->
+                    <div class="inspector-section" id="sectionCaptionProps" style="display: none;">
+                        <div class="inspector-section-title">SUBTITLE / CAPTION PROPERTIES</div>
+                        <div class="control-group">
+                            <label class="control-label">Subtitle Text</label>
+                            <textarea class="control-input" id="propCaptionText" rows="2" placeholder="Subtitle content..."></textarea>
+                        </div>
+                        <div class="control-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <label class="control-label">Start (s)</label>
+                                <input type="number" class="control-input" id="propCaptionStart" step="0.1" min="0">
+                            </div>
+                            <div>
+                                <label class="control-label">Duration (s)</label>
+                                <input type="number" class="control-input" id="propCaptionDur" step="0.1" min="0.5">
+                            </div>
+                        </div>
+                        <div class="control-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <label class="control-label">Font Size</label>
+                                <input type="number" class="control-input" id="propCaptionFontSize" value="28" min="12" max="72">
+                            </div>
+                            <div>
+                                <label class="control-label">Text Color</label>
+                                <input type="color" class="control-input" id="propCaptionColor" value="#ffffff">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                            <button class="btn btn-secondary" id="btnSeekToCaption" style="flex: 1;" title="Seek Playhead to Subtitle">
+                                ⏩ Seek Here
+                            </button>
+                            <button class="btn btn-secondary btn-del" id="btnDeleteCurrentCaption" style="color: #ef4444;" title="Delete Subtitle">
+                                🗑️ Delete
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -164,13 +164,14 @@ class RpaTimeline {
     }
 
     addClip(clipData) {
-        const id = `clip_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+        const id = clipData.id || `clip_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
         const trackId = clipData.trackId !== undefined ? clipData.trackId : 2;
         const duration = Math.max(0.2, clipData.duration || 5.0);
         const reqStart = Math.max(0, clipData.startTime || 0.0);
-        const startTime = this.findFreeSlot(trackId, reqStart, duration);
+        const startTime = (clipData._exactPosition || clipData.startTime !== undefined) ? reqStart : this.findFreeSlot(trackId, reqStart, duration);
 
         const clip = {
+            ...clipData,
             id,
             title: clipData.title || 'Untitled Clip',
             type: clipData.type || 'video',
@@ -184,6 +185,8 @@ class RpaTimeline {
             volume: clipData.volume !== undefined ? clipData.volume : 1.0,
             text: clipData.text || '',
             hasAudio: clipData.hasAudio !== undefined ? clipData.hasAudio : (clipData.type === 'video' || clipData.type === 'audio'),
+            trimStart: clipData.trimStart !== undefined ? clipData.trimStart : 0,
+            speed: clipData.speed !== undefined ? clipData.speed : 1.0,
 
             // Freeform / Changeable Aspect Ratio
             scaleX: clipData.scaleX !== undefined ? clipData.scaleX : (clipData.scale || 1.0),
@@ -198,12 +201,13 @@ class RpaTimeline {
             transitionInDuration: clipData.transitionInDuration || 0.8,
             transitionOut: clipData.transitionOut || 'none',
             transitionOutDuration: clipData.transitionOutDuration || 0.8,
+            transitions: Array.isArray(clipData.transitions) ? [...clipData.transitions] : [],
 
             // Behaviors (Physics Pop, Drift, Pulse, Jump, Fade-Scale)
             behavior: clipData.behavior || 'none',
 
             // Massive Effects Suite & Color Wheel Grading
-            visualEffects: clipData.visualEffects || {
+            visualEffects: clipData.visualEffects ? { ...clipData.visualEffects } : {
                 // Interactive 3-Way Color Wheel & Auto Adjust
                 colorGrade: {
                     lift: { r: 0, g: 0, b: 0 },
@@ -236,7 +240,7 @@ class RpaTimeline {
             },
 
             // Audio Effects
-            audioEffects: clipData.audioEffects || {
+            audioEffects: clipData.audioEffects ? { ...clipData.audioEffects } : {
                 noiseGate: false,
                 volumeLeveling: false,
                 fadeIn: 0,
@@ -244,18 +248,21 @@ class RpaTimeline {
             },
 
             // Interactive Canvas Crop
-            crop: clipData.crop || { top: 0, right: 0, bottom: 0, left: 0 },
+            crop: clipData.crop ? { ...clipData.crop } : { top: 0, right: 0, bottom: 0, left: 0 },
 
             // Position & Rotation
             xOffset: clipData.xOffset || 0,
             yOffset: clipData.yOffset || 0,
             rotation: clipData.rotation || 0,
 
-            // Visual Keyframe Graphs
-            keyframes: clipData.keyframes || []
+            // Visual Keyframe Graphs & Arrows
+            keyframes: Array.isArray(clipData.keyframes) ? [...clipData.keyframes] : [],
+            animations: Array.isArray(clipData.animations) ? [...clipData.animations] : [],
+            trackPoints: Array.isArray(clipData.trackPoints) ? [...clipData.trackPoints] : []
         };
 
         this.clips.push(clip);
+        this.clips.sort((a, b) => a.startTime - b.startTime);
         this.resolveTrackOverlaps(trackId);
         this.updateTotalDuration();
         this.saveSnapshot();
@@ -446,7 +453,12 @@ class RpaTimeline {
     }
 
     deleteTimelineTool(toolInfo) {
-        if (!toolInfo || !toolInfo.clipId) return false;
+        if (!toolInfo) return false;
+        if (toolInfo.type === 'caption' && toolInfo.captionId) {
+            this.removeCaption(toolInfo.captionId);
+            return true;
+        }
+        if (!toolInfo.clipId) return false;
         const clip = this.getClip(toolInfo.clipId);
         if (!clip) return false;
 
@@ -462,6 +474,42 @@ class RpaTimeline {
                 if (toolInfo.fxKey === 'scanlines') clip.visualEffects.scanlines = false;
                 if (toolInfo.fxKey === 'invert') clip.visualEffects.invert = false;
                 if (toolInfo.fxKey === 'deviceFrame') clip.visualEffects.deviceFrame = 'none';
+                if (toolInfo.fxKey === 'colorGradePreset') clip.visualEffects.colorGradePreset = null;
+                if (toolInfo.fxKey === 'vignette') clip.visualEffects.vignette = 0;
+                if (toolInfo.fxKey === 'filmGrain') clip.visualEffects.filmGrain = 0;
+                if (toolInfo.fxKey === 'glow') clip.visualEffects.glow = 0;
+                if (toolInfo.fxKey === 'pixelate') clip.visualEffects.pixelate = 0;
+                if (toolInfo.fxKey === 'sepia') clip.visualEffects.sepia = 0;
+                if (toolInfo.fxKey === 'chromaticAberration') clip.visualEffects.chromaticAberration = 0;
+                if (toolInfo.fxKey === 'waveWarp') clip.visualEffects.waveWarp = 0;
+                if (toolInfo.fxKey === 'lensDistortion') clip.visualEffects.lensDistortion = 0;
+                if (toolInfo.fxKey === 'vhsGlitch') clip.visualEffects.vhsGlitch = 0;
+            }
+            if (toolInfo.fxKey === 'clipSpeed') {
+                clip.speed = 1.0;
+                if (clip.originalDuration) {
+                    clip.duration = clip.originalDuration;
+                    delete clip.originalDuration;
+                }
+            }
+        } else if (toolInfo.type === 'audio-fx') {
+            if (clip.audioEffects) {
+                delete clip.audioEffects[toolInfo.fxKey];
+                if (toolInfo.fxKey === 'noiseGate') clip.audioEffects.noiseGate = false;
+                if (toolInfo.fxKey === 'volumeLeveling' || toolInfo.fxKey === 'leveling') clip.audioEffects.volumeLeveling = false;
+                if (toolInfo.fxKey === 'vocalIsolate' || toolInfo.fxKey === 'vocalClear') clip.audioEffects.vocalIsolate = false;
+                if (toolInfo.fxKey === 'robot') clip.audioEffects.robot = false;
+                if (toolInfo.fxKey === 'pitch') clip.audioEffects.pitch = false;
+                if (toolInfo.fxKey === 'bass') clip.audioEffects.bass = false;
+                if (toolInfo.fxKey === 'fadeIn') clip.audioEffects.fadeIn = 0;
+                if (toolInfo.fxKey === 'fadeOut') clip.audioEffects.fadeOut = 0;
+            }
+            if (toolInfo.fxKey === 'clipSpeed') {
+                clip.speed = 1.0;
+                if (clip.originalDuration) {
+                    clip.duration = clip.originalDuration;
+                    delete clip.originalDuration;
+                }
             }
         } else if (toolInfo.type === 'transition') {
             if (toolInfo.transType === 'in') {
@@ -650,7 +698,9 @@ class RpaTimeline {
             ...clip,
             title: `${clip.title.replace(/\s*\(Part\s*\d+\)$/i, '')} (Part 2)`,
             startTime: splitTime,
+            _exactPosition: true,
             duration: secondDuration,
+            trimStart: (clip.trimStart || 0) + firstDuration * (clip.speed || 1.0),
             sourceStartTime: (clip.sourceStartTime || 0) + firstDuration,
             transitionIn: 'none',
             transitionOut: origTransitionOut,
@@ -660,6 +710,11 @@ class RpaTimeline {
             transitions: part2Transitions
         });
 
+        if (!clip.title.includes('(Part')) {
+            clip.title = `${clip.title} (Part 1)`;
+        }
+
+        this.clips.sort((a, b) => a.startTime - b.startTime);
         this.updateTotalDuration();
         this.saveSnapshot();
         return secondClip;
@@ -716,8 +771,31 @@ class RpaTimeline {
         };
         this.captions.push(caption);
         this.captions.sort((a, b) => a.startTime - b.startTime);
+        this.updateTotalDuration();
         this.saveSnapshot();
         return caption;
+    }
+
+    getCaption(id) {
+        return (this.captions || []).find(c => c.id === id);
+    }
+
+    updateCaption(id, updates) {
+        const caption = this.getCaption(id);
+        if (!caption) return null;
+        Object.assign(caption, updates);
+        if (updates.startTime !== undefined || updates.duration !== undefined) {
+            this.captions.sort((a, b) => a.startTime - b.startTime);
+            this.updateTotalDuration();
+        }
+        this.saveSnapshot();
+        return caption;
+    }
+
+    removeCaption(id) {
+        this.captions = (this.captions || []).filter(c => c.id !== id);
+        this.updateTotalDuration();
+        this.saveSnapshot();
     }
 
     /**
@@ -1008,7 +1086,7 @@ class RpaTimeline {
                     `;
                 }
 
-                // 4. Interactive Visual Effects Chips (No 'x' buttons; select & delete)
+                // 4. Interactive Visual & Audio Effects Chips (Select & delete with keyboard)
                 const fxChips = [];
                 const fx = clip.visualEffects;
                 if (fx) {
@@ -1021,7 +1099,28 @@ class RpaTimeline {
                     if (fx.pixelate) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('pixelate') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="pixelate" title="Pixelate - Click to select & edit">👾 Pixelate ${fx.pixelate}px</span>`);
                     if (fx.sepia) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('sepia') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="sepia" title="Sepia - Click to select & edit">📜 Sepia ${fx.sepia}%</span>`);
                     if (fx.invert) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('invert') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="invert" title="Invert - Click to select & edit">🔄 Invert</span>`);
+                    if (fx.chromaticAberration) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('chromaticAberration') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="chromaticAberration" title="Chromatic Aberration - Click to select & edit">🌈 RGB Split</span>`);
+                    if (fx.waveWarp) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('waveWarp') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="waveWarp" title="Wave Warp - Click to select & edit">〰 Wave</span>`);
+                    if (fx.lensDistortion) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('lensDistortion') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="lensDistortion" title="Lens Distortion - Click to select & edit">🔍 Lens</span>`);
+                    if (fx.vhsGlitch) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('vhsGlitch') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="vhsGlitch" title="VHS Glitch - Click to select & edit">⚡ Glitch</span>`);
+                    if (fx.colorGradePreset) fxChips.push(`<span class="timeline-fx-chip ${isFxActive('colorGradePreset') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="colorGradePreset" title="LUT Preset: ${fx.colorGradePreset} - Click to select & edit">🎨 ${fx.colorGradePreset}</span>`);
                     if (fx.deviceFrame && fx.deviceFrame !== 'none') fxChips.push(`<span class="timeline-fx-chip ${isFxActive('deviceFrame') ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="deviceFrame" title="Window Frame - Click to select & edit">🪟 ${fx.deviceFrame.toUpperCase()}</span>`);
+                }
+                const afx = clip.audioEffects;
+                if (afx) {
+                    const isAudioFxActive = (k) => (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'audio-fx' && window.rpaStudio.activeTimelineTool.fxKey === k && window.rpaStudio.activeTimelineTool.clipId === clip.id);
+                    if (afx.fadeIn) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('fadeIn') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="fadeIn" title="Audio Fade In (${afx.fadeIn}s) - Click to edit">📈 Fade In ${afx.fadeIn}s</span>`);
+                    if (afx.fadeOut) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('fadeOut') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="fadeOut" title="Audio Fade Out (${afx.fadeOut}s) - Click to edit">📉 Fade Out ${afx.fadeOut}s</span>`);
+                    if (afx.noiseGate) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('noiseGate') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="noiseGate" title="Noise Gate - Click to edit">🔇 Noise Gate</span>`);
+                    if (afx.volumeLeveling) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('volumeLeveling') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="volumeLeveling" title="Volume Leveling - Click to edit">🎚 Leveling</span>`);
+                    if (afx.vocalIsolate) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('vocalIsolate') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="vocalIsolate" title="Vocal Clarity - Click to edit">🎤 Vocal Clear</span>`);
+                    if (afx.robot) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('robot') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="robot" title="Robot Voice - Click to edit">🤖 Robot</span>`);
+                    if (afx.pitch) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('pitch') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="pitch" title="Pitch Shift - Click to edit">🎵 Pitch</span>`);
+                    if (afx.bass) fxChips.push(`<span class="timeline-audio-chip ${isAudioFxActive('bass') ? 'active-tool' : ''}" data-action="inspect-audio-fx" data-fx="bass" title="Bass Boost - Click to edit">🔊 Bass</span>`);
+                }
+                if (clip.speed && clip.speed !== 1.0) {
+                    const isSpeedActive = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.fxKey === 'clipSpeed' && window.rpaStudio.activeTimelineTool.clipId === clip.id);
+                    fxChips.push(`<span class="timeline-fx-chip ${isSpeedActive ? 'active-tool' : ''}" data-action="inspect-fx" data-fx="clipSpeed" title="Clip Speed ${clip.speed}x - Click to edit">⏩ ${clip.speed}x</span>`);
                 }
                 const fxChipsHtml = fxChips.length > 0 ? `<div class="clip-fx-container">${fxChips.join('')}</div>` : '';
 
@@ -1256,6 +1355,8 @@ class RpaTimeline {
                             window.rpaStudio.setActiveTimelineTool({ type: 'behavior', clipId: clip.id }, targetEl);
                             window.rpaStudio.focusInspectorSection('sectionBehaviors');
                         }
+                        this.render(containerEl, onClipSelected);
+                        return;
                     }
                     if (action === 'inspect-fx') {
                         this.selectedClipId = clip.id;
@@ -1265,6 +1366,19 @@ class RpaTimeline {
                             window.rpaStudio.setActiveTimelineTool({ type: 'fx', fxKey, clipId: clip.id }, targetEl);
                             window.rpaStudio.focusInspectorSection('sectionVisualEffects', fxKey);
                         }
+                        this.render(containerEl, onClipSelected);
+                        return;
+                    }
+                    if (action === 'inspect-audio-fx') {
+                        this.selectedClipId = clip.id;
+                        onClipSelected(clip);
+                        if (window.rpaStudio) {
+                            const fxKey = targetEl.dataset.fx;
+                            window.rpaStudio.setActiveTimelineTool({ type: 'audio-fx', fxKey, clipId: clip.id }, targetEl);
+                            window.rpaStudio.focusInspectorSection('sectionAudioProps', fxKey);
+                        }
+                        this.render(containerEl, onClipSelected);
+                        return;
                     }
                     if (action === 'select-arrow') {
                         const animId = targetEl.dataset.animId || targetEl.closest('[data-anim-id]')?.dataset.animId;
@@ -1275,6 +1389,7 @@ class RpaTimeline {
                             window.rpaStudio.inspectAnimation(clip, anim);
                         }
                         this.render(containerEl, onClipSelected);
+                        return;
                     }
 
                     e.stopPropagation();
@@ -1743,6 +1858,94 @@ class RpaTimeline {
             trackEl.appendChild(headerEl);
             trackEl.appendChild(contentEl);
             containerEl.appendChild(trackEl);
+        }
+
+        // 3. Render Dedicated Interactive Subtitle / Caption Track
+        if (this.captions && this.captions.length > 0) {
+            const capTrackEl = document.createElement('div');
+            capTrackEl.className = 'timeline-caption-track';
+            capTrackEl.innerHTML = `
+                <div class="track-header" title="Subtitles & Captions Track">
+                    <span style="margin-right:6px">💬</span> Subtitles
+                </div>
+                <div class="track-content" id="captionTrackContent"></div>
+            `;
+            const contentDiv = capTrackEl.querySelector('#captionTrackContent');
+            for (const cap of this.captions) {
+                const capEl = document.createElement('div');
+                const isCapActive = (window.rpaStudio && window.rpaStudio.activeTimelineTool && window.rpaStudio.activeTimelineTool.type === 'caption' && window.rpaStudio.activeTimelineTool.captionId === cap.id);
+                capEl.className = `timeline-caption-item ${isCapActive ? 'active-tool selected' : ''}`;
+                capEl.style.left = `${cap.startTime * this.pixelsPerSecond}px`;
+                capEl.style.width = `${Math.max(20, cap.duration * this.pixelsPerSecond)}px`;
+                capEl.title = `"${cap.text}" (${cap.startTime.toFixed(1)}s - ${(cap.startTime + cap.duration).toFixed(1)}s) - Click to edit, Drag handle to resize duration`;
+                capEl.innerHTML = `
+                    <span style="pointer-events:none; overflow:hidden; text-overflow:ellipsis;">${cap.text}</span>
+                    <div class="timeline-caption-handle timeline-caption-handle-right" data-action="resize-caption" title="Drag to adjust caption duration"></div>
+                `;
+
+                capEl.onpointerdown = (e) => {
+                    e.stopPropagation();
+                    if (e.target.dataset.action === 'resize-caption') {
+                        const startX = e.clientX;
+                        const origDur = cap.duration;
+                        const onMove = (ev) => {
+                            const deltaSec = (ev.clientX - startX) / this.pixelsPerSecond;
+                            cap.duration = Math.max(0.5, parseFloat((origDur + deltaSec).toFixed(2)));
+                            capEl.style.width = `${Math.max(20, cap.duration * this.pixelsPerSecond)}px`;
+                            if (window.rpaStudio) window.rpaStudio.syncCaptionProps(cap);
+                        };
+                        const onUp = () => {
+                            window.removeEventListener('pointermove', onMove);
+                            window.removeEventListener('pointerup', onUp);
+                            this.saveSnapshot();
+                            if (window.rpaStudio) {
+                                window.rpaStudio.renderTimeline();
+                                window.rpaStudio.renderCaptionList();
+                            }
+                        };
+                        window.addEventListener('pointermove', onMove);
+                        window.addEventListener('pointerup', onUp);
+                        return;
+                    }
+
+                    // Click or drag caption item
+                    const startX = e.clientX;
+                    const origStart = cap.startTime;
+                    let moved = false;
+                    if (window.rpaStudio) {
+                        window.rpaStudio.setActiveTimelineTool({ type: 'caption', captionId: cap.id }, capEl);
+                        window.rpaStudio.focusInspectorSection('sectionCaptionProps');
+                        window.rpaStudio.seek(cap.startTime);
+                    }
+                    const onMove = (ev) => {
+                        if (Math.abs(ev.clientX - startX) > 4) moved = true;
+                        const deltaSec = (ev.clientX - startX) / this.pixelsPerSecond;
+                        cap.startTime = Math.max(0, parseFloat((origStart + deltaSec).toFixed(2)));
+                        capEl.style.left = `${cap.startTime * this.pixelsPerSecond}px`;
+                        if (window.rpaStudio) {
+                            window.rpaStudio.seek(cap.startTime);
+                            window.rpaStudio.syncCaptionProps(cap);
+                        }
+                    };
+                    const onUp = () => {
+                        window.removeEventListener('pointermove', onMove);
+                        window.removeEventListener('pointerup', onUp);
+                        if (moved) {
+                            this.captions.sort((a, b) => a.startTime - b.startTime);
+                            this.saveSnapshot();
+                            if (window.rpaStudio) {
+                                window.rpaStudio.renderTimeline();
+                                window.rpaStudio.renderCaptionList();
+                            }
+                        }
+                    };
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                };
+
+                contentDiv.appendChild(capEl);
+            }
+            containerEl.appendChild(capTrackEl);
         }
     }
 }

@@ -272,11 +272,13 @@ class RpaCompositor {
             const clipSpeed = Math.max(0.1, Math.min(10.0, clip.speed || 1.0));
             const targetMediaTime = (clip.trimStart || 0) + relTime * clipSpeed;
 
+            const masterVol = (window.rpaStudio && typeof window.rpaStudio.masterVolume === 'number') ? window.rpaStudio.masterVolume : (this.masterVolume !== undefined ? this.masterVolume : 1.0);
+
             if (clip.type === 'video' && clip.sourceUrl) {
                 activeUrls.add(clip.sourceUrl);
                 const v = this.getVideoElement(clip.sourceUrl);
                 v.muted = isTrackMuted || !clip.hasAudio;
-                v.volume = isTrackMuted ? 0 : Math.max(0, Math.min(1, (clip.volume !== undefined ? clip.volume : 1.0)));
+                v.volume = isTrackMuted ? 0 : Math.max(0, Math.min(1, (clip.volume !== undefined ? clip.volume : 1.0) * masterVol));
                 if (v.playbackRate !== clipSpeed) {
                     try { v.playbackRate = clipSpeed; } catch (_) {}
                 }
@@ -300,7 +302,7 @@ class RpaCompositor {
                 if (clip.audioEffects?.fadeOut && timeLeft < clip.audioEffects.fadeOut) {
                     vol *= Math.max(0, timeLeft / clip.audioEffects.fadeOut);
                 }
-                a.volume = isTrackMuted ? 0 : Math.max(0, Math.min(1, vol));
+                a.volume = isTrackMuted ? 0 : Math.max(0, Math.min(1, vol * masterVol));
                 if (a.playbackRate !== clipSpeed) {
                     try { a.playbackRate = clipSpeed; } catch (_) {}
                 }
@@ -365,7 +367,7 @@ class RpaCompositor {
         this.audioElements.clear();
     }
 
-    renderFrame(timeline, time, isPlaying = false) {
+    renderFrame(timeline, time, isPlaying = false, isExport = false) {
         const { width, height } = this.canvas;
         const bg = this.projectSettings.backgroundColor;
         if (!bg || bg === 'transparent') {
@@ -734,9 +736,10 @@ class RpaCompositor {
         this.renderCaptions(timeline, time, width, height);
 
         // 5. Render Transform Gizmo or Crop Tool handles on selected clip
-        // Studio Precision: Gizmo bounding boxes and resize handles are ONLY shown when paused, NEVER during playback
+        // Studio Precision: Gizmo bounding boxes and resize handles are ONLY shown when paused, NEVER during playback or export
+        const isExporting = isExport || this.isExporting || (window.rpaStudio && window.rpaStudio.isExporting);
         const isCurrentlyPlaying = isPlaying || (window.rpaStudio && window.rpaStudio.isPlaying);
-        if (!isCurrentlyPlaying && timeline.selectedClipId) {
+        if (!isExporting && !isCurrentlyPlaying && timeline.selectedClipId) {
             const selClip = timeline.getClip(timeline.selectedClipId);
             // Also ensure the playhead is currently positioned within the selected clip's span
             if (selClip && time >= selClip.startTime && time <= (selClip.startTime + selClip.duration)) {
@@ -748,13 +751,13 @@ class RpaCompositor {
             }
         }
 
-        // 5b. Studio Center Alignment Rulers / Smart Guides during media dragging
-        if (this.alignmentGuides) {
+        // 5b. Studio Center Alignment Rulers / Smart Guides during media dragging (never in export)
+        if (!isExporting && this.alignmentGuides) {
             this.renderAlignmentGuides(width, height);
         }
 
-        // 6. Empty Timeline Splash
-        if (activeClips.length === 0) {
+        // 6. Empty Timeline Splash (never in export)
+        if (!isExporting && activeClips.length === 0) {
             this.ctx.fillStyle = '#475569';
             this.ctx.font = '26px sans-serif';
             this.ctx.textAlign = 'center';
@@ -1067,6 +1070,11 @@ class RpaCompositor {
             }
             bx = cx - bw / 2;
             by = cy - bh / 2;
+        } else if (title.includes('highlight area') || subtype === 'highlight-area' || subtype === 'rectangle') {
+            bw = clip.width || 480;
+            bh = clip.height || 280;
+            bx = (width - bw) / 2 + (clip.xOffset || 0);
+            by = (height - bh) / 2 + (clip.yOffset || 0);
         } else if (title.includes('highlight') || subtype === 'highlight') {
             bw = clip.width || 440;
             bh = clip.height || 70;
@@ -3813,6 +3821,31 @@ class RpaCompositor {
             this.ctx.shadowColor = clip.color || '#0284c7';
             this.ctx.shadowBlur = 18;
             this.ctx.stroke();
+        } else if (title.includes('Highlight Area') || subtype === 'highlight-area') {
+            // Studio Rectangular Highlight Area (from Shapes category)
+            const bx = isDefaultFull ? width * 0.25 : drawX;
+            const by = isDefaultFull ? height * 0.3 : drawY;
+            const bw = isDefaultFull ? width * 0.45 : drawW;
+            const bh = isDefaultFull ? height * 0.32 : drawH;
+            const hlColor = clip.color || '#fbbf24';
+
+            this.ctx.save();
+            this.ctx.fillStyle = clip.color ? (clip.color.length === 7 ? clip.color + '38' : clip.color) : 'rgba(251, 191, 36, 0.24)';
+            this.roundRect(this.ctx, bx, by, bw, bh, 10);
+            this.ctx.fill();
+            this.ctx.strokeStyle = hlColor;
+            this.ctx.lineWidth = 3.5;
+            this.ctx.shadowColor = hlColor;
+            this.ctx.shadowBlur = 8;
+            this.ctx.stroke();
+            this.ctx.restore();
+
+            if (displayText) {
+                const fSize = Math.max(12, Math.round((clip.fontSize || 22) * bScale));
+                const ac = getAlignedCoords(bx, by, bw, bh);
+                const maxW = Math.max(60, bw - 24 * bScale);
+                this.renderStyledText(this.ctx, displayText, ac.tx, ac.ty, { ...clip, fontSize: fSize }, bScale, ac.effAlign, ac.effVAlign, fontTrans, relTime, duration, maxW);
+            }
         } else if (title.includes('Highlight') || subtype === 'highlight') {
             // Studio Highlight Marker: Translucent fluorescent bar with soft pill caps & subtle glow
             const bx = isDefaultFull ? width * 0.3 : drawX;
@@ -3993,22 +4026,40 @@ class RpaCompositor {
             this.ctx.strokeStyle = clip.color || 'rgba(255, 255, 255, 0.2)';
             this.ctx.lineWidth = 2;
             this.ctx.strokeRect(bx, by, bw, bh);
-        } else if (title.includes('Blur')) {
+        } else if (title.includes('Blur') || subtype === 'blur') {
             const bx = isDefaultFull ? width * 0.3 : drawX;
             const by = isDefaultFull ? height * 0.4 : drawY;
-            const bw = isDefaultFull ? 300 : drawW;
-            const bh = isDefaultFull ? 64 : drawH;
+            const bw = isDefaultFull ? 320 : drawW;
+            const bh = isDefaultFull ? 74 : drawH;
 
-            this.ctx.fillStyle = '#1e293b';
+            this.ctx.save();
             this.roundRect(this.ctx, bx, by, bw, bh, 8);
-            this.ctx.fill();
-            this.ctx.strokeStyle = clip.color || 'rgba(255, 255, 255, 0.15)';
-            this.ctx.lineWidth = 1.5;
+            this.ctx.clip();
+
+            // Real blurred background if scratch canvas is available
+            if (this.scratchCanvas) {
+                try {
+                    this.ctx.filter = 'blur(16px)';
+                    this.ctx.drawImage(this.scratchCanvas, 0, 0);
+                    this.ctx.filter = 'none';
+                } catch (_) {}
+            }
+
+            // Frosted privacy overlay
+            this.ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+            this.ctx.fillRect(bx, by, bw, bh);
+            this.ctx.restore();
+
+            this.ctx.save();
+            this.ctx.strokeStyle = clip.color || '#38bdf8';
+            this.ctx.lineWidth = 2;
+            this.roundRect(this.ctx, bx, by, bw, bh, 8);
             this.ctx.stroke();
 
             const fSize = Math.max(10, Math.round((clip.fontSize || 22) * bScale));
             const maxW = Math.max(60, bw - 20 * bScale);
-            this.renderStyledText(this.ctx, displayText || '••••••••••••••', bx + bw / 2, by + bh / 2, { ...clip, fontSize: fSize, color: '#94a3b8', fontFamily: 'monospace' }, bScale, 'center', 'middle', fontTrans, relTime, duration, maxW);
+            this.renderStyledText(this.ctx, displayText || '••••••••••••••', bx + bw / 2, by + bh / 2, { ...clip, fontSize: fSize, color: '#f8fafc', fontFamily: 'monospace' }, bScale, 'center', 'middle', fontTrans, relTime, duration, maxW);
+            this.ctx.restore();
         } else if (title.includes('Highlight') || title.includes('Rectangle') || subtype === 'rectangle') {
             const bx = isDefaultFull ? width * 0.25 : drawX;
             const by = isDefaultFull ? height * 0.3 : drawY;
@@ -4534,20 +4585,21 @@ class RpaCompositor {
         if (!curCap || !curCap.text) return;
 
         this.ctx.save();
-        this.ctx.font = '600 28px sans-serif';
+        const fSize = curCap.fontSize || 28;
+        this.ctx.font = `600 ${fSize}px sans-serif`;
         this.ctx.textAlign = 'center';
         const metrics = this.ctx.measureText(curCap.text);
-        const pillW = metrics.width + 48;
-        const pillH = 50;
+        const pillW = metrics.width + Math.max(36, fSize * 1.5);
+        const pillH = Math.max(40, fSize * 1.7);
         const pillX = (width - pillW) / 2;
-        const pillY = height - 100;
+        const pillY = height - Math.max(70, pillH + 40);
 
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        this.ctx.fillStyle = curCap.bgColor || 'rgba(0, 0, 0, 0.78)';
         this.roundRect(this.ctx, pillX, pillY, pillW, pillH, 8);
         this.ctx.fill();
 
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillText(curCap.text, width / 2, pillY + 35);
+        this.ctx.fillStyle = curCap.color || '#ffffff';
+        this.ctx.fillText(curCap.text, width / 2, pillY + pillH * 0.68);
         this.ctx.restore();
     }
 

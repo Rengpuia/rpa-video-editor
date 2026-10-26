@@ -523,10 +523,13 @@ class RpaSfxGenerator {
             sfxId: sfxId
         };
 
-        timeline.addClip(newClip);
+        const added = timeline.addClip(newClip);
         timeline.saveSnapshot();
-        return newClip;
+        return added || newClip;
     }
 }
 
 window.RpaSfxGenerator = RpaSfxGenerator;
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { RpaSfxGenerator };
+}

@@ -1035,3 +1035,80 @@
     background: rgba(255, 255, 255, 0.1);
     margin: 4px 6px;
 }
+
+
+/* ==========================================================================
+   TIMELINE AUDIO FX & CAPTION CHIP STYLING
+   ========================================================================== */
+.timeline-audio-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 5px;
+    background: rgba(5, 150, 105, 0.4);
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    border-radius: 3px;
+    font-size: 8.5px;
+    font-weight: 700;
+    color: #a7f3d0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.timeline-audio-chip:hover {
+    background: rgba(5, 150, 105, 0.7);
+    border-color: #34d399;
+    color: #ffffff;
+}
+.timeline-audio-chip.active-tool {
+    outline: 2px solid #34d399 !important;
+    box-shadow: 0 0 10px rgba(52, 211, 153, 0.9) !important;
+    z-index: 40 !important;
+}
+
+.timeline-caption-track {
+    position: relative;
+    height: 24px;
+    background: rgba(30, 41, 59, 0.6);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+.timeline-caption-item {
+    position: absolute;
+    top: 2px;
+    height: 20px;
+    background: linear-gradient(90deg, rgba(217, 119, 6, 0.75), rgba(180, 83, 9, 0.85));
+    border: 1px solid #fbbf24;
+    border-radius: 3px;
+    color: #ffffff;
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 0 6px;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s ease;
+}
+.timeline-caption-item:hover {
+    border-color: #ffffff;
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+}
+.timeline-caption-item.active {
+    outline: 2px solid #38bdf8;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.9);
+}
+.timeline-caption-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 6px;
+    height: 100%;
+    cursor: ew-resize;
+    background: rgba(255, 255, 255, 0.3);
+}

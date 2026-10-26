@@ -342,6 +342,8 @@ class RpaExporter {
             const runRenderLoop = async () => {
                 const renderStartTime = performance.now();
                 const totalFrames = Math.ceil(totalExportDuration * fps);
+                exportCompositor.isExporting = true;
+                const exportTimeline = Object.assign(Object.create(Object.getPrototypeOf(timeline)), timeline, { selectedClipId: null });
 
                 for (let f = 0; f <= totalFrames; f++) {
                     const currentTime = exportStart + (f / fps);
@@ -350,8 +352,8 @@ class RpaExporter {
                     // 1. Wait for video decoders to stabilize at current timestamp
                     await seekAllActiveVideos(currentTime);
 
-                    // 2. Render frame into buffer canvas
-                    exportCompositor.renderFrame(timeline, currentTime);
+                    // 2. Render frame into buffer canvas (never render gizmos, handles, guides or empty splash)
+                    exportCompositor.renderFrame(exportTimeline, currentTime, true, true);
 
                     // 3. Atomically blit composite buffer to export canvas (zero flicker/flash)
                     exportCtx.drawImage(bufferCanvas, 0, 0);
