@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { BASE_DIR, PROJECTS_DIR, EXPORTS_DIR } = require('./paths');
+const { BASE_DIR, PROJECTS_DIR, EXPORTS_DIR, projectPath, idFromTitle } = require('./paths');
 
 const MCP_TOOLS = [
     {
@@ -197,19 +197,23 @@ function handleMcpRequest(reqBody, callback) {
         if (!match) {
             return callback({ jsonrpc: '2.0', id, error: { code: -32602, message: 'Invalid resource URI format' } });
         }
-        const projectId = match[1];
-        const filePath = path.join(PROJECTS_DIR, `${projectId}.rpavideo`);
-        if (!fs.existsSync(filePath)) {
-            return callback({ jsonrpc: '2.0', id, error: { code: -32001, message: 'Project not found' } });
-        }
-        const text = fs.readFileSync(filePath, 'utf8');
-        return callback({
-            jsonrpc: '2.0',
-            id,
-            result: {
-                contents: [{ uri, mimeType: 'application/json', text }]
+        try {
+            const projectId = match[1];
+            const filePath = projectPath(projectId);
+            if (!fs.existsSync(filePath)) {
+                return callback({ jsonrpc: '2.0', id, error: { code: -32001, message: 'Project not found' } });
             }
-        });
+            const text = fs.readFileSync(filePath, 'utf8');
+            return callback({
+                jsonrpc: '2.0',
+                id,
+                result: {
+                    contents: [{ uri, mimeType: 'application/json', text }]
+                }
+            });
+        } catch (err) {
+            return callback({ jsonrpc: '2.0', id, error: { code: -32602, message: err.message } });
+        }
     }
 
     // 5. MCP Tools Call
@@ -245,7 +249,7 @@ function handleMcpRequest(reqBody, callback) {
 
             if (toolName === 'get_project') {
                 const pId = args.projectId;
-                const filePath = path.join(PROJECTS_DIR, `${pId}.rpavideo`);
+                const filePath = projectPath(pId);
                 if (!fs.existsSync(filePath)) {
                     return callback({ jsonrpc: '2.0', id, error: { code: -32001, message: `Project ${pId} not found.` } });
                 }
@@ -259,8 +263,8 @@ function handleMcpRequest(reqBody, callback) {
 
             if (toolName === 'create_project') {
                 const title = args.title || 'Untitled Project';
-                const id = title.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-                const filePath = path.join(PROJECTS_DIR, `${id}.rpavideo`);
+                const projectId = idFromTitle(title, 'untitled_project');
+                const filePath = projectPath(projectId);
 
                 let w = args.width || 1920;
                 let h = args.height || 1080;
@@ -292,25 +296,28 @@ function handleMcpRequest(reqBody, callback) {
                 return callback({
                     jsonrpc: '2.0',
                     id,
-                    result: { content: [{ type: 'text', text: JSON.stringify({ success: true, id, path: filePath, project: newProj }, null, 2) }] }
+                    result: { content: [{ type: 'text', text: JSON.stringify({ success: true, id: projectId, path: filePath, project: newProj }, null, 2) }] }
                 });
             }
 
             if (toolName === 'save_project') {
                 const proj = args.project;
-                const id = (proj.title || 'untitled').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-                const filePath = path.join(PROJECTS_DIR, `${id}.rpavideo`);
+                if (!proj || typeof proj !== 'object') {
+                    return callback({ jsonrpc: '2.0', id, error: { code: -32602, message: 'save_project requires a project object.' } });
+                }
+                const projectId = idFromTitle(proj.title);
+                const filePath = projectPath(projectId);
                 fs.writeFileSync(filePath, JSON.stringify(proj, null, 2), 'utf8');
                 return callback({
                     jsonrpc: '2.0',
                     id,
-                    result: { content: [{ type: 'text', text: JSON.stringify({ success: true, id, path: filePath }, null, 2) }] }
+                    result: { content: [{ type: 'text', text: JSON.stringify({ success: true, id: projectId, path: filePath }, null, 2) }] }
                 });
             }
 
             if (toolName === 'add_clip') {
                 const pId = args.projectId;
-                const filePath = path.join(PROJECTS_DIR, `${pId}.rpavideo`);
+                const filePath = projectPath(pId);
                 if (!fs.existsSync(filePath)) {
                     return callback({ jsonrpc: '2.0', id, error: { code: -32001, message: `Project ${pId} not found.` } });
                 }
@@ -340,7 +347,7 @@ function handleMcpRequest(reqBody, callback) {
 
             if (toolName === 'delete_clip') {
                 const pId = args.projectId;
-                const filePath = path.join(PROJECTS_DIR, `${pId}.rpavideo`);
+                const filePath = projectPath(pId);
                 if (!fs.existsSync(filePath)) {
                     return callback({ jsonrpc: '2.0', id, error: { code: -32001, message: `Project ${pId} not found.` } });
                 }
@@ -363,7 +370,7 @@ function handleMcpRequest(reqBody, callback) {
 
             if (toolName === 'split_clip') {
                 const pId = args.projectId;
-                const filePath = path.join(PROJECTS_DIR, `${pId}.rpavideo`);
+                const filePath = projectPath(pId);
                 if (!fs.existsSync(filePath)) {
                     return callback({ jsonrpc: '2.0', id, error: { code: -32001, message: `Project ${pId} not found.` } });
                 }
@@ -397,7 +404,7 @@ function handleMcpRequest(reqBody, callback) {
 
             if (toolName === 'apply_behavior') {
                 const pId = args.projectId;
-                const filePath = path.join(PROJECTS_DIR, `${pId}.rpavideo`);
+                const filePath = projectPath(pId);
                 if (!fs.existsSync(filePath)) {
                     return callback({ jsonrpc: '2.0', id, error: { code: -32001, message: `Project ${pId} not found.` } });
                 }

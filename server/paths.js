@@ -55,9 +55,42 @@ function resolveStorageDirs() {
 
 const { BASE_DIR, PROJECTS_DIR, EXPORTS_DIR } = resolveStorageDirs();
 
+// Project IDs become file names, so only a conservative character set is accepted.
+// This blocks path separators, "..", drive letters and absolute paths.
+const PROJECT_ID_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,119}$/;
+
+function isValidProjectId(id) {
+    return typeof id === 'string' && PROJECT_ID_RE.test(id) && !id.includes('..');
+}
+
+/** Derive a valid, filesystem-safe project ID from a free-form title. */
+function idFromTitle(title, fallback = 'untitled') {
+    let id = String(title == null ? '' : title).trim().replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    id = id.replace(/^[_-]+|[_-]+$/g, '').slice(0, 100);
+    return id || fallback;
+}
+
+/**
+ * Resolve a project ID to a .rpavideo path guaranteed to be inside PROJECTS_DIR.
+ * Throws an Error for invalid IDs so callers can report a clean failure.
+ */
+function projectPath(id) {
+    if (!isValidProjectId(id)) {
+        throw new Error('Invalid project id.');
+    }
+    const full = path.join(PROJECTS_DIR, `${id}.rpavideo`);
+    if (path.dirname(full) !== PROJECTS_DIR) {
+        throw new Error('Invalid project id.');
+    }
+    return full;
+}
+
 module.exports = {
     BASE_DIR,
     PROJECTS_DIR,
     EXPORTS_DIR,
-    resolveStorageDirs
+    resolveStorageDirs,
+    isValidProjectId,
+    idFromTitle,
+    projectPath
 };

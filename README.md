@@ -5,7 +5,7 @@
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blueviolet.svg)](#model-context-protocol-mcp)
 [![Build Status](https://img.shields.io/badge/Windows-Installer_Ready-success.svg)](#building-the-windows-installer)
 
-A modern, high-performance, high-performance video editor and telemetry recording studio engineered from scratch for automated screen recording, kinetic motion graphics, and multi-track video production.
+A modern, high-performance video editor and telemetry recording studio engineered from scratch for automated screen recording, kinetic motion graphics, and multi-track video production.
 
 ---
 
@@ -62,14 +62,14 @@ Native support for Anthropic Model Context Protocol (MCP) via JSON-RPC 2.0 over 
 ## 🤖 Configuring MCP with AI Assistants
 
 ### Claude Desktop Configuration
-Add the following to your `claude_desktop_config.json`:
+Add the following to your `claude_desktop_config.json` (replace the path with the folder where you saved this project):
 ```json
 {
   "mcpServers": {
     "rpa-video-editor": {
       "command": "node",
       "args": [
-        "J:\\Vid editor\\RPA_Video_Editor_Portable\\mcp_server.js"
+        "C:\\path\\to\\rpa-video-editor\\mcp_server.js"
       ]
     }
   }
@@ -77,7 +77,7 @@ Add the following to your `claude_desktop_config.json`:
 ```
 
 ### Antigravity / Cursor Configuration
-Run the stdio server directly or connect via HTTP JSON-RPC at `http://127.0.0.1:3800/api/mcp`.
+Run the stdio server directly or connect via HTTP JSON-RPC at `http://127.0.0.1:3800/api/mcp` (the studio must be running). The HTTP endpoint only accepts requests from the studio UI and local non-browser clients; requests from other websites are rejected.
 
 ---
 
@@ -119,6 +119,18 @@ To run RPA Video Editor locally:
 - **Electron Desktop Shell:** Run `npm start`.
 - **Background Server Only:** Run `node server/server.js`.
 
+**Requirements:** Node.js 24+ and npm 11+ (see `.nvmrc`). Run `npm install` once before `npm start`, and `npm test` to run the syntax checks plus the functional and security tests.
+
+---
+
+## 🔐 Security Notes
+
+- The studio server listens on `127.0.0.1` only (default port `3800`, override with the `PORT` environment variable). If that port is taken by a different program, the app shows an error instead of loading it.
+- Requests with a foreign `Origin` or `Host` header are rejected, so websites open in your browser cannot call the local API.
+- Project IDs are restricted to letters, digits, `_`, `-` and `.`; they cannot point outside the projects folder.
+- The desktop app runs the UI in a sandboxed window, restricts the native save bridge to the UI itself, only writes project (`.rpavideo`, `.json`) and video (`.webm`, `.mp4`, ...) files, and limits camera/microphone/screen-capture access to the studio window.
+- To report a vulnerability, email the developer listed above.
+
 ---
 
 ## 📦 Building the Windows Installer & Native Executable
@@ -148,6 +160,11 @@ Pushing to GitHub triggers `.github/workflows/build-installer.yml`, which automa
 ---
 
 ## 📜 Version History & Changelog
+
+### Unreleased (Security Hardening)
+- **Local API:** removed wildcard CORS, added `Origin`/`Host` checks, request size limits, and safe project-ID handling (fixes path traversal in REST and MCP routes); the save API no longer accepts caller-chosen file paths.
+- **Desktop app:** sandboxed renderer, validated IPC senders, sanitized export/project file names and extensions, origin-restricted media permissions, navigation lockdown, and a Content-Security-Policy.
+- **Fixes:** a corrupt project file no longer crashes the app; MCP `create_project`/`save_project` replies now carry the correct JSON-RPC `id`; startup no longer silently attaches to an unrelated program on port 3800.
 
 ### v2.0.0 (Cleanroom Release) — October 24, 2026
 - **Cleanroom Overhaul:** 100% proprietary code and trademark elimination.

@@ -13,9 +13,34 @@ const { handleMcpRequest } = require('./mcp_handler');
 
 const PORT = process.env.PORT || 3800;
 const HOST = '127.0.0.1';
-const { BASE_DIR, PROJECTS_DIR, EXPORTS_DIR } = require('./paths');
+const { BASE_DIR, PROJECTS_DIR, EXPORTS_DIR, projectPath, idFromTitle } = require('./paths');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const CLIENT_DIR = path.join(ROOT_DIR, 'client');
+
+// Request size limits (bytes)
+const MAX_MCP_BODY = 5 * 1024 * 1024;
+const MAX_PROJECT_BODY = 100 * 1024 * 1024;
+
+// Project file extensions the save API will write
+const ALLOWED_PROJECT_EXTENSIONS = new Set(['rpavideo', 'json']);
+
+// Content-Security-Policy for the studio UI. Inline scripts/styles are still used by
+// index.html, so 'unsafe-inline' is required; everything else is locked to this origin
+// (plus Google Fonts, which index.html loads).
+const CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "media-src 'self' data: blob: mediastream:",
+    "connect-src 'self' blob: data:",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'"
+].join('; ');
 
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -76,21 +101,63 @@ function getInstalledWindowsFonts(callback) {
 }
 
 function sendJson(res, statusCode, data) {
-    res.writeHead(statusCode, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-    });
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(data, null, 2));
+}
+
+/**
+ * Only the studio UI itself (and non-browser local clients, which send no Origin header)
+ * may talk to this server. This blocks cross-site requests from web pages and DNS rebinding.
+ */
+function isTrustedRequest(req) {
+    const port = server.listening && server.address() ? server.address().port : PORT;
+    const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
+    if (!allowedHosts.has(String(req.headers.host || '').toLowerCase())) return false;
+
+    const origin = req.headers.origin;
+    if (origin !== undefined && !allowedHosts.has(String(origin).replace(/^https?:\/\//i, '').toLowerCase())) return false;
+    if (origin !== undefined && !/^http:\/\//i.test(origin)) return false;
+
+    if (req.headers['sec-fetch-site'] === 'cross-site') return false;
+    return true;
+}
+
+function readBody(req, res, maxBytes, onBody) {
+    let size = 0;
+    let tooLarge = false;
+    const chunks = [];
+    req.on('data', chunk => {
+        if (tooLarge) return;
+        size += chunk.length;
+        if (size > maxBytes) {
+            tooLarge = true;
+            chunks.length = 0;
+            sendJson(res, 413, { error: 'Request body too large.' });
+            return;
+        }
+        chunks.push(chunk);
+    });
+    req.on('end', () => {
+        if (!tooLarge) onBody(Buffer.concat(chunks).toString('utf8'));
+    });
+    req.on('error', () => {});
+}
+
+function isDirectory(p) {
+    try { return fs.statSync(p).isDirectory(); } catch { return false; }
+}
+
+function safeDecode(str) {
+    try { return decodeURIComponent(str); } catch { return null; }
 }
 
 function handleApiRequest(req, res, url) {
     // Model Context Protocol (MCP) JSON-RPC 2.0 Endpoint
     if (req.method === 'POST' && url.pathname === '/api/mcp') {
-        let body = '';
-        req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
+        readBody(req, res, MAX_MCP_BODY, (body) => {
             try {
                 const mcpReq = JSON.parse(body);
+                if (!mcpReq || typeof mcpReq !== 'object' || Array.isArray(mcpReq)) throw new Error('not an object');
                 handleMcpRequest(mcpReq, (mcpRes) => {
                     sendJson(res, 200, mcpRes);
                 });
@@ -146,21 +213,26 @@ function handleApiRequest(req, res, url) {
 
     // 3. Save Project
     if (req.method === 'POST' && url.pathname === '/api/projects/save') {
-        let body = '';
-        req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
+        readBody(req, res, MAX_PROJECT_BODY, (body) => {
             try {
                 const project = JSON.parse(body);
-                let targetDir = (project.targetDirectory && fs.existsSync(project.targetDirectory)) 
-                    ? project.targetDirectory 
+                if (!project || typeof project !== 'object' || Array.isArray(project)) {
+                    throw new Error('Project must be a JSON object.');
+                }
+
+                // The caller may pick a destination folder, but never the file name or path.
+                const requestedDir = typeof project.targetDirectory === 'string' ? project.targetDirectory.trim() : '';
+                const targetDir = (requestedDir && path.isAbsolute(requestedDir) && isDirectory(requestedDir))
+                    ? requestedDir
                     : PROJECTS_DIR;
                 if (!fs.existsSync(targetDir)) {
                     fs.mkdirSync(targetDir, { recursive: true });
                 }
-                let id = (project.title || 'untitled').trim().replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-                id = id.replace(/^_+|_+$/g, '') || `project_${Date.now()}`;
-                const ext = project.extension || 'rpavideo';
-                const filePath = project.filePath || path.join(targetDir, `${id}.${ext}`);
+
+                const id = idFromTitle(project.title, `project_${Date.now()}`);
+                const requestedExt = typeof project.extension === 'string' ? project.extension.toLowerCase() : 'rpavideo';
+                const ext = ALLOWED_PROJECT_EXTENSIONS.has(requestedExt) ? requestedExt : 'rpavideo';
+                const filePath = path.join(targetDir, `${id}.${ext}`);
                 fs.writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf8');
                 return sendJson(res, 200, { success: true, id, path: filePath });
             } catch (err) {
@@ -173,25 +245,34 @@ function handleApiRequest(req, res, url) {
 
     // 4. Load Project
     if (req.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
-        const id = url.pathname.replace('/api/projects/', '');
-        const filePath = path.join(PROJECTS_DIR, `${id}.rpavideo`);
-        if (fs.existsSync(filePath)) {
+        const id = safeDecode(url.pathname.slice('/api/projects/'.length));
+        let filePath;
+        try { filePath = projectPath(id); } catch { return sendJson(res, 400, { error: 'Invalid project id.' }); }
+        if (!fs.existsSync(filePath)) {
+            return sendJson(res, 404, { error: 'Project not found.' });
+        }
+        try {
             const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
             return sendJson(res, 200, data);
-        } else {
-            return sendJson(res, 404, { error: 'Project not found.' });
+        } catch (err) {
+            console.error('[Server Load Error]', err);
+            return sendJson(res, 500, { error: 'Project file is corrupt or unreadable.' });
         }
     }
 
     // 5. Delete Project
     if (req.method === 'DELETE' && url.pathname.startsWith('/api/projects/')) {
-        const id = url.pathname.replace('/api/projects/', '');
-        const filePath = path.join(PROJECTS_DIR, `${id}.rpavideo`);
-        if (fs.existsSync(filePath)) {
+        const id = safeDecode(url.pathname.slice('/api/projects/'.length));
+        let filePath;
+        try { filePath = projectPath(id); } catch { return sendJson(res, 400, { error: 'Invalid project id.' }); }
+        if (!fs.existsSync(filePath)) {
+            return sendJson(res, 404, { error: 'Project not found.' });
+        }
+        try {
             fs.unlinkSync(filePath);
             return sendJson(res, 200, { success: true, id });
-        } else {
-            return sendJson(res, 404, { error: 'Project not found.' });
+        } catch (err) {
+            return sendJson(res, 500, { error: `Failed to delete project: ${err.message}` });
         }
     }
 
@@ -207,10 +288,22 @@ function handleApiRequest(req, res, url) {
 }
 
 const server = http.createServer((req, res) => {
-    // CORS Headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Reject cross-site and DNS-rebinding requests before doing anything else
+    if (!isTrustedRequest(req)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+    }
+
+    // Same-origin / local-client responses only; never a wildcard CORS policy
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    if (req.headers.origin) {
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
 
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -218,28 +311,71 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    const url = new URL(req.url, `http://${HOST}:${PORT}`);
-
-    if (url.pathname.startsWith('/api/')) {
-        return handleApiRequest(req, res, url);
+    let url;
+    try {
+        url = new URL(req.url, `http://${HOST}:${PORT}`);
+    } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Bad request');
+        return;
     }
 
-    // Serve Static Client Assets
-    let safePath = path.normalize(url.pathname).replace(/^(\.\.[\/\\])+/, '');
-    if (safePath === '/' || safePath === '\\') safePath = '/index.html';
+    if (url.pathname.startsWith('/api/')) {
+        try {
+            return handleApiRequest(req, res, url);
+        } catch (err) {
+            console.error('[Server API Error]', err);
+            if (!res.headersSent) sendJson(res, 500, { error: 'Internal server error.' });
+            return;
+        }
+    }
 
-    const filePath = path.join(CLIENT_DIR, safePath);
+    // Serve Static Client Assets (must stay inside CLIENT_DIR)
+    const decoded = safeDecode(url.pathname);
+    if (decoded === null || decoded.includes('\0')) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Bad request');
+        return;
+    }
+    const relPath = (decoded === '/' || decoded === '\\') ? '/index.html' : decoded;
+    const filePath = path.resolve(CLIENT_DIR, '.' + relPath);
+
+    if (filePath !== CLIENT_DIR && !filePath.startsWith(CLIENT_DIR + path.sep)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+    }
 
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         const ext = path.extname(filePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-        res.writeHead(200, { 'Content-Type': contentType });
+        const headers = { 'Content-Type': contentType };
+        if (ext === '.html') {
+            headers['Content-Security-Policy'] = CSP;
+            headers['X-Frame-Options'] = 'DENY';
+        }
+        res.writeHead(200, headers);
         fs.createReadStream(filePath).pipe(res);
     } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end(`File not found: ${url.pathname}`);
+        res.end('File not found');
     }
 });
+
+/** True if the program already listening on host:port is an RPA Video Editor server. */
+function isRpaServerRunning(host, port) {
+    return new Promise((resolve) => {
+        const req = http.get({ host, port, path: '/api/system/status', timeout: 1500 }, (res) => {
+            let data = '';
+            res.on('data', (c) => { if (data.length < 65536) data += c; });
+            res.on('end', () => {
+                try { resolve(JSON.parse(data).app === 'RPA Video Editor'); } catch { resolve(false); }
+            });
+        });
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.on('error', () => resolve(false));
+    });
+}
 
 function start(port = PORT, host = HOST) {
     return new Promise((resolve, reject) => {
@@ -262,10 +398,15 @@ function start(port = PORT, host = HOST) {
             resolve(server);
         });
 
-        server.on('error', (err) => {
+        server.on('error', async (err) => {
             if (err.code === 'EADDRINUSE') {
-                console.log(`[RPA Server] Port ${port} is already in use. Utilizing existing instance.`);
-                resolve(server);
+                // Only reuse the port if the program on it really is another RPA Video Editor.
+                if (await isRpaServerRunning(host, port)) {
+                    console.log(`[RPA Server] Port ${port} is already served by another RPA Video Editor instance. Reusing it.`);
+                    resolve(server);
+                } else {
+                    reject(new Error(`Port ${port} is already in use by another program. Close it or set the PORT environment variable to a free port.`));
+                }
             } else {
                 reject(err);
             }
@@ -274,7 +415,10 @@ function start(port = PORT, host = HOST) {
 }
 
 if (require.main === module) {
-    start();
+    start().catch((err) => {
+        console.error('[RPA Server] ' + err.message);
+        process.exit(1);
+    });
 }
 
 module.exports = { server, start, PORT, HOST };
