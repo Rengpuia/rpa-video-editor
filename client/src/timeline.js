@@ -1747,4 +1747,9 @@ class RpaTimeline {
     }
 }
 
-window.RpaTimeline = RpaTimeline;
+if (typeof window !== 'undefined') {
+    window.RpaTimeline = RpaTimeline;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { RpaTimeline };
+}

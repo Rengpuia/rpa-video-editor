@@ -374,7 +374,7 @@ class RpaCompositor {
                 this.canvas.classList.add('canvas-transparent');
             }
         } else {
-            if (this.canvas && this.canvas.classList.contains('canvas-transparent')) {
+            if (this.canvas && this.canvas.classList && this.canvas.classList.contains('canvas-transparent')) {
                 this.canvas.classList.remove('canvas-transparent');
             }
             this.ctx.fillStyle = bg;
@@ -428,7 +428,7 @@ class RpaCompositor {
 
             // 3. Calculate Keyframes & Bezier Curves
             const kf = this.computeKeyframes(clip, relTime);
-            const hasAnim = Array.isArray(clip.animations) && clip.animations.length > 0;
+            const hasAnim = (Array.isArray(clip.animations) && clip.animations.length > 0) || (Array.isArray(clip.keyframes) && clip.keyframes.length > 0);
 
             // Apply Transforms: Translation, Scale, Rotation, Opacity
             const baseOp = hasAnim ? (kf.opacity !== undefined ? kf.opacity : 1.0) : ((clip.opacity !== undefined ? clip.opacity : 1.0) * (kf.opacity !== undefined ? kf.opacity : 1.0));
@@ -481,21 +481,26 @@ class RpaCompositor {
             this.ctx.filter = `brightness(${bright}%) contrast(${cont}%) saturate(${sat}%) hue-rotate(${hue}deg) ${invertStr} ${sepiaStr} ${blurStr}`.trim();
 
             let drawX, drawY, drawW, drawH;
+            const bp = clip.behaviorProps;
+            const hasText = !!(clip.text || clip.title);
+            const isPerChar = (clip.type === 'callout') && hasText && clip.behavior && clip.behavior !== 'none' && (!bp || bp.textUnit !== 'all');
 
             if (clip.type === 'callout') {
                 const b = this.getCalloutBounds(clip, width, height);
                 const baseScaleX = hasAnim ? (kf.scaleX * kf.scale) : (clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0));
                 const baseScaleY = hasAnim ? (kf.scaleY * kf.scale) : (clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0));
-                const bScale = behaviorTransform.scale !== undefined ? behaviorTransform.scale : 1.0;
+                const bScale = isPerChar ? 1.0 : (behaviorTransform.scale !== undefined ? behaviorTransform.scale : 1.0);
                 const tScale = transitionTransform.scale !== undefined ? transitionTransform.scale : 1.0;
                 const sX = baseScaleX * bScale * tScale;
                 const sY = baseScaleY * bScale * tScale;
                 drawW = b.bw * sX;
                 drawH = b.bh * sY;
-                const activeCalloutX = hasAnim ? kf.x : (clip.xOffset || 0);
-                const activeCalloutY = hasAnim ? kf.y : (clip.yOffset || 0);
-                drawX = b.bx + (b.bw - drawW) / 2 + (behaviorTransform.x || 0) + (transitionTransform.x || 0) + activeCalloutX;
-                drawY = b.by + (b.bh - drawH) / 2 + (behaviorTransform.y || 0) + (transitionTransform.y || 0) + activeCalloutY;
+                const bX = isPerChar ? 0 : (behaviorTransform.x || 0);
+                const bY = isPerChar ? 0 : (behaviorTransform.y || 0);
+                const animOffsetX = hasAnim ? (kf.x - (clip.xOffset || 0)) : 0;
+                const animOffsetY = hasAnim ? (kf.y - (clip.yOffset || 0)) : 0;
+                drawX = b.bx + (b.bw - drawW) / 2 + bX + (transitionTransform.x || 0) + animOffsetX;
+                drawY = b.by + (b.bh - drawH) / 2 + bY + (transitionTransform.y || 0) + animOffsetY;
             } else if (clip.type === 'image') {
                 let imgW = width;
                 let imgH = height;
@@ -552,7 +557,7 @@ class RpaCompositor {
                 drawY = (height - drawH) / 2 + baseOffsetY + behaviorTransform.y + transitionTransform.y;
             }
 
-            const rotBeh = behaviorTransform.rotation || 0;
+            const rotBeh = isPerChar ? 0 : (behaviorTransform.rotation || 0);
             const rotTrans = transitionTransform.rotation || 0;
             const baseRot = hasAnim ? kf.rotation : (clip.rotation || 0);
             if (baseRot || rotBeh || rotTrans) {
@@ -1074,17 +1079,6 @@ class RpaCompositor {
             by = (height - bh) / 2 + (clip.yOffset || 0);
         }
 
-        const sX = clip.scaleX !== undefined ? clip.scaleX : (clip.scale || 1.0);
-        const sY = clip.scaleY !== undefined ? clip.scaleY : (clip.scale || 1.0);
-        if (sX !== 1.0 || sY !== 1.0) {
-            const cx = bx + bw / 2;
-            const cy = by + bh / 2;
-            bw *= sX;
-            bh *= sY;
-            bx = cx - bw / 2;
-            by = cy - bh / 2;
-        }
-
         return { bx, by, bw, bh };
     }
 
@@ -1102,6 +1096,16 @@ class RpaCompositor {
             rotation: clip.rotation || 0
         };
 
+        const getProp = (obj, p, def) => {
+            if (!obj) return def;
+            if (obj[p] !== undefined) return obj[p];
+            if (p === 'x' && obj.xOffset !== undefined) return obj.xOffset;
+            if (p === 'y' && obj.yOffset !== undefined) return obj.yOffset;
+            if (p === 'xOffset' && obj.x !== undefined) return obj.x;
+            if (p === 'yOffset' && obj.y !== undefined) return obj.y;
+            return def;
+        };
+
         // 1. Vector-Property Keyframing & Timeline Arrow Tweening Engine
         if (clip.animations && clip.animations.length > 0) {
             const sortedAnims = [...clip.animations].sort((a, b) => a.timeOffset - b.timeOffset);
@@ -1111,7 +1115,8 @@ class RpaCompositor {
                 const s = sortedAnims[0].startState || sortedAnims[0].startProps || {};
                 const res = { ...defaultState };
                 for (const p of Object.keys(res)) {
-                    if (s[p] !== undefined) res[p] = s[p];
+                    const val = getProp(s, p, undefined);
+                    if (val !== undefined) res[p] = val;
                 }
                 return res;
             }
@@ -1123,7 +1128,8 @@ class RpaCompositor {
                 const e = lastAnim.endState || lastAnim.targetProps || {};
                 const res = { ...defaultState };
                 for (const p of Object.keys(res)) {
-                    if (e[p] !== undefined) res[p] = e[p];
+                    const val = getProp(e, p, undefined);
+                    if (val !== undefined) res[p] = val;
                 }
                 return res;
             }
@@ -1144,8 +1150,10 @@ class RpaCompositor {
                     const res = { ...defaultState };
 
                     for (const p of Object.keys(res)) {
-                        const startVal = s[p] !== undefined ? s[p] : (anim.startProps && anim.startProps[p] !== undefined ? anim.startProps[p] : defaultState[p]);
-                        const endVal = e[p] !== undefined ? e[p] : (anim.targetProps && anim.targetProps[p] !== undefined ? anim.targetProps[p] : startVal);
+                        const sVal = getProp(s, p, undefined);
+                        const startVal = sVal !== undefined ? sVal : getProp(anim.startProps, p, defaultState[p]);
+                        const eVal = getProp(e, p, undefined);
+                        const endVal = eVal !== undefined ? eVal : getProp(anim.targetProps, p, startVal);
                         res[p] = startVal + (endVal - startVal) * t;
                     }
                     return res;
@@ -1158,7 +1166,8 @@ class RpaCompositor {
                         const e = anim.endState || anim.targetProps || {};
                         const res = { ...defaultState };
                         for (const p of Object.keys(res)) {
-                            if (e[p] !== undefined) res[p] = e[p];
+                            const val = getProp(e, p, undefined);
+                            if (val !== undefined) res[p] = val;
                         }
                         return res;
                     }
@@ -1171,7 +1180,8 @@ class RpaCompositor {
             const res = { ...defaultState };
             const props = ['scale', 'scaleX', 'scaleY', 'opacity', 'x', 'y', 'rotation'];
             for (const prop of props) {
-                const kfs = clip.keyframes.filter(k => k.property === prop).sort((a, b) => a.timeOffset - b.timeOffset);
+                const altProp = prop === 'x' ? 'xOffset' : (prop === 'y' ? 'yOffset' : prop);
+                const kfs = clip.keyframes.filter(k => k.property === prop || k.property === altProp).sort((a, b) => a.timeOffset - b.timeOffset);
                 if (kfs.length === 0) continue;
 
                 if (relTime <= kfs[0].timeOffset) {
@@ -1488,8 +1498,21 @@ class RpaCompositor {
 
         const inDur = (bp.in && bp.in.duration !== undefined) ? bp.in.duration : 0.8;
         const outDur = (bp.out && bp.out.duration !== undefined) ? bp.out.duration : 0.8;
-        const waveDelay = (bp.waveDelay !== undefined ? bp.waveDelay : 0.12);
-        const unitOffset = (bp.textUnit === 'all' ? 0 : (index * waveDelay));
+        const waveDelay = (bp.waveDelay !== undefined && bp.waveDelay > 0) ? bp.waveDelay : 0.08;
+
+        const inType = bp.in?.type || 'ltr';
+        const inWaveDelay = bp.in?.offset !== undefined ? bp.in.offset : waveDelay;
+        let inUnitOffset = 0;
+        if (bp.textUnit !== 'all' && inType !== 'all') {
+            inUnitOffset = (inType === 'rtl') ? ((totalUnits - 1 - index) * inWaveDelay) : (index * inWaveDelay);
+        }
+
+        const outType = bp.out?.type || 'ltr';
+        const outWaveDelay = bp.out?.offset !== undefined ? bp.out.offset : waveDelay;
+        let outUnitOffset = 0;
+        if (bp.textUnit !== 'all' && outType !== 'all') {
+            outUnitOffset = (outType === 'rtl') ? ((totalUnits - 1 - index) * outWaveDelay) : (index * outWaveDelay);
+        }
 
         const projW = (this.projectSettings?.width || this.projectWidth || (this.canvas ? this.canvas.width : 1920));
         const projH = (this.projectSettings?.height || this.projectHeight || (this.canvas ? this.canvas.height : 1080));
@@ -1513,7 +1536,7 @@ class RpaCompositor {
         const outDir = resolveDir(bp.out);
 
         // Phase 1: IN (Entrance) with wave progression
-        const glyphInStart = unitOffset * 0.35;
+        const glyphInStart = inUnitOffset * 0.35;
         const glyphInDur = Math.max(0.2, inDur * 0.7);
         if (relTime < glyphInStart + glyphInDur) {
             if (relTime < glyphInStart) {
@@ -1603,7 +1626,7 @@ class RpaCompositor {
 
         // Phase 3: OUT (Exit) with wave progression
         const timeLeft = duration - relTime;
-        const glyphOutStart = unitOffset * 0.35;
+        const glyphOutStart = outUnitOffset * 0.35;
         const glyphOutDur = Math.max(0.2, outDur * 0.7);
         if (timeLeft < glyphOutStart + glyphOutDur) {
             if (timeLeft < glyphOutStart) {
@@ -1678,9 +1701,13 @@ class RpaCompositor {
         const rawAmount = bp.during?.jump !== undefined ? bp.during.jump : (bp.during?.amount !== undefined ? bp.during.amount : 50);
         const amount = Math.max(0.1, rawAmount / 50.0); // 1.0 at default 50
 
-        // Wave phase delay is STRICTLY ZERO across all During styles to completely eliminate character wave ripples.
-        // Only if user explicitly chooses 'dancing-wave', a wave delay is used.
-        const duringUnitOffset = (dStyle === 'dancing-wave') ? (index * waveDelay) : 0;
+        // Wave phase delay cascades across each alphabet when not set to simultaneous ('all')
+        const dType = bp.during?.type || 'ltr';
+        const duringOffsetRate = bp.during?.offset !== undefined ? bp.during.offset : (waveDelay || 0.08);
+        let duringUnitOffset = 0;
+        if (bp.textUnit !== 'all' && dType !== 'all') {
+            duringUnitOffset = (dType === 'rtl') ? ((totalUnits - 1 - index) * duringOffsetRate) : (index * duringOffsetRate);
+        }
         const cyclePhase = (relTime * speed * Math.PI * 2) - (duringUnitOffset * speed * Math.PI * 2);
 
         let dx = 0;
@@ -3387,7 +3414,14 @@ class RpaCompositor {
         }) : null;
 
         // Text Unit Progression: 'character' (single alphabet), 'word', or 'all'
-        const textUnit = bp ? (bp.textUnit || 'character') : 'none';
+        let textUnit = bp ? (bp.textUnit || 'character') : 'none';
+        if (bp && (bp.in?.type === 'word' || bp.during?.type === 'word' || bp.out?.type === 'word')) {
+            textUnit = 'word';
+        } else if (bp && bp.in?.type === 'all' && bp.during?.type === 'all' && bp.out?.type === 'all') {
+            textUnit = 'all';
+        } else if (bp && (bp.in?.type === 'ltr' || bp.in?.type === 'rtl' || bp.during?.type === 'ltr' || bp.during?.type === 'rtl' || bp.out?.type === 'ltr' || bp.out?.type === 'rtl')) {
+            textUnit = 'character';
+        }
 
         if (hasBehavior && textUnit === 'character') {
             // Count total non-whitespace characters for progression
@@ -5138,4 +5172,9 @@ class RpaCompositor {
     }
 }
 
-window.RpaCompositor = RpaCompositor;
+if (typeof window !== 'undefined') {
+    window.RpaCompositor = RpaCompositor;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { RpaCompositor };
+}
